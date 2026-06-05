@@ -120,6 +120,13 @@ export async function linkApprove(request: Request, env: Env, ctx: AuthCtx): Pro
   await addLink(env, ctx.houseId, body.fromHouseId);
   await addLink(env, body.fromHouseId, ctx.houseId);
   await putJSON(env.SCOREBOARD, key, reqs.filter((r) => r.fromHouseId !== body.fromHouseId));
+  // Now that the two are linked, drop any stale reverse-direction request.
+  const reverseKey = `requests:${body.fromHouseId}`;
+  const reverseReqs = (await getJSON<LinkRequest[]>(env.SCOREBOARD, reverseKey)) ?? [];
+  const pruned = reverseReqs.filter((r) => r.fromHouseId !== ctx.houseId);
+  if (pruned.length !== reverseReqs.length) {
+    await putJSON(env.SCOREBOARD, reverseKey, pruned);
+  }
   return json({ ok: true });
 }
 
@@ -145,8 +152,13 @@ export async function leave(request: Request, env: Env, ctx: AuthCtx): Promise<R
   if (!body || typeof body.houseId !== 'string') {
     return json({ error: 'houseId required' }, 400);
   }
-  await removeLink(env, ctx.houseId, body.houseId);
-  await removeLink(env, body.houseId, ctx.houseId);
+  // Only touch the other house's key if we're genuinely linked to it — avoids
+  // creating junk `links:<stranger>` entries from an arbitrary houseId.
+  const myLinks = (await getJSON<string[]>(env.SCOREBOARD, `links:${ctx.houseId}`)) ?? [];
+  if (myLinks.includes(body.houseId)) {
+    await removeLink(env, ctx.houseId, body.houseId);
+    await removeLink(env, body.houseId, ctx.houseId);
+  }
   return json({ ok: true });
 }
 
@@ -163,7 +175,7 @@ export async function board(_request: Request, env: Env, ctx: AuthCtx): Promise<
     cheers = cheers.concat(c);
   }
   cheers.sort((x, y) => x.ts - y.ts);
-  cheers = cheers.slice(-50);
+  cheers = cheers.slice(-CHEER_CAP);
 
   return json({ houses, cheers });
 }

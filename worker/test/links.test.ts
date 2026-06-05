@@ -94,6 +94,37 @@ describe('link lifecycle', () => {
     expect(await env.SCOREBOARD.get(`links:${a.houseId}`, 'json')).toEqual([]);
   });
 
+  it('leaving an unknown house does not create a junk links key', async () => {
+    const a = await registerHouse('Alpha');
+    const res = await authedFetch(a, '/leave', {
+      method: 'POST',
+      body: JSON.stringify({ houseId: 'h_ghost' }),
+    });
+    expect(res.status).toBe(200);
+    expect(await env.SCOREBOARD.get('links:h_ghost', 'json')).toBeNull();
+  });
+
+  it('approving clears a stale reverse-direction request', async () => {
+    const a = await registerHouse('Alpha');
+    const b = await registerHouse('Bravo');
+    // Both families request each other.
+    await authedFetch(a, '/link-request', {
+      method: 'POST',
+      body: JSON.stringify({ friendCode: b.friendCode }),
+    });
+    await authedFetch(b, '/link-request', {
+      method: 'POST',
+      body: JSON.stringify({ friendCode: a.friendCode }),
+    });
+    // A approves B's request → they link, and A's own pending request to B should be cleared.
+    await authedFetch(a, '/link-approve', {
+      method: 'POST',
+      body: JSON.stringify({ fromHouseId: b.houseId }),
+    });
+    const bReqs = (await (await authedFetch(b, '/requests')).json()) as { requests: LinkRequest[] };
+    expect(bReqs.requests).toEqual([]);
+  });
+
   it('link-request is idempotent and refuses an already-linked house', async () => {
     const a = await registerHouse('Alpha');
     const b = await registerHouse('Bravo');

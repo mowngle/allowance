@@ -68,4 +68,25 @@ describe('GET /board', () => {
     const board = (await (await authedFetch(a, '/board')).json()) as { houses: Summary[] };
     expect(board.houses.map((h) => h.house)).toEqual(['Solo']);
   });
+
+  it('stops showing a rival after /leave', async () => {
+    const a = await registerHouse('Alpha');
+    const b = await registerHouse('Bravo');
+    await postSummary(a, 'Amy', 90);
+    await postSummary(b, 'Ben', 80);
+    await link(a, b);
+
+    let aBoard = (await (await authedFetch(a, '/board')).json()) as { houses: Summary[] };
+    expect(aBoard.houses.map((h) => h.house).sort()).toEqual(['Alpha', 'Bravo']);
+
+    await authedFetch(a, '/leave', {
+      method: 'POST',
+      body: JSON.stringify({ houseId: b.houseId }),
+    });
+
+    aBoard = (await (await authedFetch(a, '/board')).json()) as { houses: Summary[] };
+    expect(aBoard.houses.map((h) => h.house)).toEqual(['Alpha']);
+    const bBoard = (await (await authedFetch(b, '/board')).json()) as { houses: Summary[] };
+    expect(bBoard.houses.map((h) => h.house)).toEqual(['Bravo']);
+  });
 });
