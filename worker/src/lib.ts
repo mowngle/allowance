@@ -30,6 +30,10 @@ function randomCode(len = 4): string {
   return [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
 }
 
+// NOTE: a friend code is a shareable identifier, NOT a secret. Its slug is derived
+// from the house name and is intentionally guessable. It only lets another family
+// *request* a link, which the owner must approve — so it carries no access-control
+// weight. Do not use it for authentication.
 export function friendCodeFor(name: string): string {
   const slug = name.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5) || 'FAM';
   return `${slug}-${randomCode(4)}`;
