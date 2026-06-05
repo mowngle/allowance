@@ -1,6 +1,8 @@
 name = "allowance-scoreboard"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
+# Required by @cloudflare/vitest-pool-workers (the test pool refuses to start
+# without it); also applied at deploy.
 compatibility_flags = ["nodejs_compat"]
 
 # For local tests the KV namespace is simulated by vitest-pool-workers, so this
