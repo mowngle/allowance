@@ -36,6 +36,8 @@ export const persons = sqliteTable(
     // ISO date 'YYYY-MM-DD'. Nullable for parents.
     birthdate: text('birthdate'),
     avatarUrl: text('avatar_url'),
+    // Per-kid: may this kid post canned cheers to the cross-home wall? Default off.
+    canPostCheers: integer('can_post_cheers', { mode: 'boolean' }).notNull().default(false),
     // Argon2/bcrypt hash. Nullable; only parents have a PIN.
     parentPinHash: text('parent_pin_hash'),
     createdAt: integer('created_at').notNull(),
@@ -225,6 +227,17 @@ export const pushSubscriptions = sqliteTable('push_subscriptions', {
   createdAt: integer('created_at').notNull(),
 });
 
+// ─── App Config ──────────────────────────────────────────────────────────────
+//
+// Small key-value store for runtime-acquired settings that aren't secrets-in-.env
+// — currently the cross-home scoreboard connection (url, house id, token, friend
+// code). Included in the nightly JSON backup like every other table.
+
+export const appConfig = sqliteTable('app_config', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+});
+
 // ─── Type exports ────────────────────────────────────────────────────────────
 
 export type Family = typeof families.$inferSelect;
@@ -235,3 +248,4 @@ export type PayoutCycle = typeof payoutCycles.$inferSelect;
 export type LedgerEntry = typeof ledgerEntries.$inferSelect;
 export type Device = typeof devices.$inferSelect;
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
+export type AppConfig = typeof appConfig.$inferSelect;

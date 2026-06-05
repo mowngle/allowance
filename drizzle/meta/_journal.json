@@ -15,6 +15,13 @@
       "when": 1778973009290,
       "tag": "0001_rapid_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1780698939123,
+      "tag": "0002_dapper_blue_marvel",
+      "breakpoints": true
     }
   ]
 }
