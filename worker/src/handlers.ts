@@ -46,6 +46,16 @@ export async function summary(request: Request, env: Env, ctx: AuthCtx): Promise
   if (!body || typeof body.weekStarting !== 'string' || !Array.isArray(body.kids)) {
     return json({ error: 'bad summary' }, 400);
   }
+  const kidsValid = (body.kids as unknown[]).every(
+    (k) =>
+      k !== null &&
+      typeof k === 'object' &&
+      typeof (k as Record<string, unknown>).name === 'string' &&
+      typeof (k as Record<string, unknown>).pct === 'number'
+  );
+  if (!kidsValid) {
+    return json({ error: 'bad summary' }, 400);
+  }
   const record: Summary = {
     houseId: ctx.houseId,
     house: ctx.house.name,

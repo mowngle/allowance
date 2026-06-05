@@ -9,11 +9,6 @@ const sampleKids = [
 
 describe('POST /summary', () => {
   it('rejects requests with no/invalid credentials', async () => {
-    const noAuth = await fetch('https://sb.test/summary', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ weekStarting: '2026-06-01', kids: sampleKids }),
-    }).catch(() => null);
     const { SELF } = await import('cloudflare:test');
     const res = await SELF.fetch('https://sb.test/summary', {
       method: 'POST',
@@ -21,7 +16,6 @@ describe('POST /summary', () => {
       body: JSON.stringify({ weekStarting: '2026-06-01', kids: sampleKids }),
     });
     expect(res.status).toBe(401);
-    void noAuth;
   });
 
   it('rejects a bad token for a real house', async () => {
@@ -53,6 +47,15 @@ describe('POST /summary', () => {
     const res = await authedFetch(creds, '/summary', {
       method: 'POST',
       body: JSON.stringify({ kids: 'nope' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a summary whose kids entries are malformed', async () => {
+    const creds = await registerHouse('Smith');
+    const res = await authedFetch(creds, '/summary', {
+      method: 'POST',
+      body: JSON.stringify({ weekStarting: '2026-06-01', kids: [{ name: 'Mia' }, 42] }),
     });
     expect(res.status).toBe(400);
   });
