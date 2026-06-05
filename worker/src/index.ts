@@ -1,14 +1,16 @@
+import type { Env } from './types';
+import { json } from './lib';
+import { register } from './handlers';
+
 export default {
-  async fetch(request: Request): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
-    if (request.method === 'GET' && url.pathname === '/health') {
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-    return new Response(JSON.stringify({ error: 'not found' }), {
-      status: 404,
-      headers: { 'content-type': 'application/json' },
-    });
+    const path = url.pathname;
+    const method = request.method;
+
+    if (method === 'GET' && path === '/health') return json({ ok: true });
+    if (method === 'POST' && path === '/register') return register(request, env);
+
+    return json({ error: 'not found' }, 404);
   },
 };
