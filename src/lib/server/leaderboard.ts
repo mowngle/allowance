@@ -88,11 +88,15 @@ async function hasDawnPatrol(personId: string): Promise<boolean> {
 }
 
 /** Compute the badge ids for a kid. `pct` is this week's consistency %. */
-export async function badgesForKid(personId: string, pct: number): Promise<string[]> {
+export async function badgesForKid(
+  personId: string,
+  pct: number,
+  streak?: number
+): Promise<string[]> {
   const badges: string[] = [];
   if (pct === 100) badges.push('perfect-week');
-  const streak = await streakForKid(personId);
-  if (streak >= 14) badges.push('iron-streak');
+  const s = streak ?? (await streakForKid(personId));
+  if (s >= 14) badges.push('iron-streak');
   if (await hasDawnPatrol(personId)) badges.push('dawn-patrol');
   // NOTE: 'comeback-kid' (biggest week-over-week jump) is deferred to v2 — it needs
   // last week's pct stored per kid, which we don't persist yet. 'cup-holder' is
@@ -117,9 +121,9 @@ export async function buildLocalSummary(familyId: string): Promise<LocalSummary>
   for (const item of review) {
     const pct =
       item.totalCount > 0 ? Math.round((item.confirmedCount / item.totalCount) * 100) : 0;
-    const [streak, badges, avatarRows] = await Promise.all([
-      streakForKid(item.kidId),
-      badgesForKid(item.kidId, pct),
+    const streak = await streakForKid(item.kidId);
+    const [badges, avatarRows] = await Promise.all([
+      badgesForKid(item.kidId, pct, streak),
       db
         .select({ avatarUrl: schema.persons.avatarUrl })
         .from(schema.persons)
