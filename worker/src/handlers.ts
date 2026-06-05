@@ -150,6 +150,24 @@ export async function leave(request: Request, env: Env, ctx: AuthCtx): Promise<R
   return json({ ok: true });
 }
 
+export async function board(_request: Request, env: Env, ctx: AuthCtx): Promise<Response> {
+  const links = (await getJSON<string[]>(env.SCOREBOARD, `links:${ctx.houseId}`)) ?? [];
+  const ids = [ctx.houseId, ...links];
+
+  const houses: Summary[] = [];
+  let cheers: Cheer[] = [];
+  for (const id of ids) {
+    const s = await getJSON<Summary>(env.SCOREBOARD, `summary:${id}`);
+    if (s) houses.push(s);
+    const c = (await getJSON<Cheer[]>(env.SCOREBOARD, `cheers:${id}`)) ?? [];
+    cheers = cheers.concat(c);
+  }
+  cheers.sort((x, y) => x.ts - y.ts);
+  cheers = cheers.slice(-50);
+
+  return json({ houses, cheers });
+}
+
 const CHEER_CAP = 50;
 
 export async function cheer(request: Request, env: Env, ctx: AuthCtx): Promise<Response> {
