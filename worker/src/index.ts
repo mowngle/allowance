@@ -1,6 +1,7 @@
 import type { Env } from './types';
 import { json } from './lib';
-import { register } from './handlers';
+import { withAuth } from './auth';
+import { register, summary } from './handlers';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -10,6 +11,8 @@ export default {
 
     if (method === 'GET' && path === '/health') return json({ ok: true });
     if (method === 'POST' && path === '/register') return register(request, env);
+
+    if (method === 'POST' && path === '/summary') return withAuth(request, env, summary);
 
     return json({ error: 'not found' }, 404);
   },

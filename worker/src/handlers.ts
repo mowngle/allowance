@@ -1,5 +1,6 @@
-import type { Env, House } from './types';
+import type { Env, House, Summary, SummaryKid } from './types';
 import { json, sha256Hex, randomToken, friendCodeFor, putJSON } from './lib';
+import type { AuthCtx } from './auth';
 
 export async function register(request: Request, env: Env): Promise<Response> {
   const body = (await request.json().catch(() => null)) as { name?: unknown } | null;
@@ -36,4 +37,22 @@ export async function register(request: Request, env: Env): Promise<Response> {
   }
 
   return json({ houseId: id, token, friendCode });
+}
+
+export async function summary(request: Request, env: Env, ctx: AuthCtx): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as
+    | { weekStarting?: unknown; kids?: unknown }
+    | null;
+  if (!body || typeof body.weekStarting !== 'string' || !Array.isArray(body.kids)) {
+    return json({ error: 'bad summary' }, 400);
+  }
+  const record: Summary = {
+    houseId: ctx.houseId,
+    house: ctx.house.name,
+    weekStarting: body.weekStarting,
+    kids: body.kids as SummaryKid[],
+    updatedAt: Date.now(),
+  };
+  await putJSON(env.SCOREBOARD, `summary:${ctx.houseId}`, record);
+  return json({ ok: true });
 }
