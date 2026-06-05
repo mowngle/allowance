@@ -7,6 +7,7 @@ export default defineConfig({
     env: { DATABASE_URL: ':memory:' },
     setupFiles: ['./src/lib/server/test/setup.ts'],
     pool: 'forks',
+    include: ['src/**/*.test.ts'],
   },
   resolve: {
     alias: { $lib: resolve('./src/lib') },
