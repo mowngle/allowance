@@ -24,10 +24,16 @@ export async function register(request: Request, env: Env): Promise<Response> {
   if (!friendCode) return json({ error: 'could not allocate friend code' }, 500);
 
   const house: House = { id, name, tokenHash, friendCode, createdAt: Date.now() };
-  await putJSON(env.SCOREBOARD, `house:${id}`, house);
-  await env.SCOREBOARD.put(`friendcode:${friendCode}`, id);
-  await putJSON(env.SCOREBOARD, `links:${id}`, []);
-  await putJSON(env.SCOREBOARD, `requests:${id}`, []);
+  try {
+    await Promise.all([
+      putJSON(env.SCOREBOARD, `house:${id}`, house),
+      env.SCOREBOARD.put(`friendcode:${friendCode}`, id),
+      putJSON(env.SCOREBOARD, `links:${id}`, []),
+      putJSON(env.SCOREBOARD, `requests:${id}`, []),
+    ]);
+  } catch {
+    return json({ error: 'failed to create house' }, 500);
+  }
 
   return json({ houseId: id, token, friendCode });
 }
