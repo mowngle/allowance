@@ -85,8 +85,13 @@ export async function linkRequest(request: Request, env: Env, ctx: AuthCtx): Pro
   if (!targetId) return json({ error: 'unknown friend code' }, 404);
   if (targetId === ctx.houseId) return json({ error: 'cannot link to yourself' }, 400);
 
-  const links = (await getJSON<string[]>(env.SCOREBOARD, `links:${ctx.houseId}`)) ?? [];
-  if (links.includes(targetId)) return json({ error: 'already linked' }, 409);
+  const [myLinks, theirLinks] = await Promise.all([
+    getJSON<string[]>(env.SCOREBOARD, `links:${ctx.houseId}`),
+    getJSON<string[]>(env.SCOREBOARD, `links:${targetId}`),
+  ]);
+  const alreadyLinked =
+    (myLinks ?? []).includes(targetId) || (theirLinks ?? []).includes(ctx.houseId);
+  if (alreadyLinked) return json({ error: 'already linked' }, 409);
 
   const key = `requests:${targetId}`;
   const reqs = (await getJSON<LinkRequest[]>(env.SCOREBOARD, key)) ?? [];
