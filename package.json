@@ -13,10 +13,13 @@
     "db:migrate": "node ./scripts/migrate.js",
     "db:seed": "node ./scripts/seed-dev.js",
     "db:backup": "node ./scripts/backup.js",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "^5.2.0",
+    "vitest": "^2.0.5",
     "@sveltejs/kit": "^2.5.0",
     "@sveltejs/vite-plugin-svelte": "^3.1.0",
     "@types/better-sqlite3": "^7.6.10",
