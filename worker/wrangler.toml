@@ -1,0 +1,11 @@
+name = "allowance-scoreboard"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# For local tests the KV namespace is simulated by vitest-pool-workers, so this
+# placeholder id is fine. Replace with the real id from `wrangler kv namespace
+# create` before `wrangler deploy` (see Task 8).
+[[kv_namespaces]]
+binding = "SCOREBOARD"
+id = "0000000000000000000000000000000000"
