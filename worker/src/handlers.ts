@@ -1,4 +1,4 @@
-import type { Env, House, Summary, SummaryKid, LinkRequest } from './types';
+import type { Env, House, Summary, SummaryKid, LinkRequest, Cheer } from './types';
 import { json, sha256Hex, randomToken, friendCodeFor, putJSON, getJSON } from './lib';
 import type { AuthCtx } from './auth';
 
@@ -147,5 +147,28 @@ export async function leave(request: Request, env: Env, ctx: AuthCtx): Promise<R
   }
   await removeLink(env, ctx.houseId, body.houseId);
   await removeLink(env, body.houseId, ctx.houseId);
+  return json({ ok: true });
+}
+
+const CHEER_CAP = 50;
+
+export async function cheer(request: Request, env: Env, ctx: AuthCtx): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as
+    | { fromName?: unknown; avatar?: unknown; phraseId?: unknown }
+    | null;
+  if (!body || typeof body.fromName !== 'string' || typeof body.phraseId !== 'string') {
+    return json({ error: 'bad cheer' }, 400);
+  }
+  const key = `cheers:${ctx.houseId}`;
+  const list = (await getJSON<Cheer[]>(env.SCOREBOARD, key)) ?? [];
+  list.push({
+    fromHouseId: ctx.houseId,
+    fromHouse: ctx.house.name,
+    fromName: body.fromName,
+    avatar: typeof body.avatar === 'string' ? body.avatar : '',
+    phraseId: body.phraseId,
+    ts: Date.now(),
+  });
+  await putJSON(env.SCOREBOARD, key, list.slice(-CHEER_CAP));
   return json({ ok: true });
 }
