@@ -133,3 +133,19 @@ export async function linkDecline(request: Request, env: Env, ctx: AuthCtx): Pro
   await putJSON(env.SCOREBOARD, key, reqs.filter((r) => r.fromHouseId !== body.fromHouseId));
   return json({ ok: true });
 }
+
+async function removeLink(env: Env, a: string, b: string): Promise<void> {
+  const key = `links:${a}`;
+  const list = (await getJSON<string[]>(env.SCOREBOARD, key)) ?? [];
+  await putJSON(env.SCOREBOARD, key, list.filter((x) => x !== b));
+}
+
+export async function leave(request: Request, env: Env, ctx: AuthCtx): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as { houseId?: unknown } | null;
+  if (!body || typeof body.houseId !== 'string') {
+    return json({ error: 'houseId required' }, 400);
+  }
+  await removeLink(env, ctx.houseId, body.houseId);
+  await removeLink(env, body.houseId, ctx.houseId);
+  return json({ ok: true });
+}

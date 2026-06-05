@@ -118,3 +118,26 @@ describe('link lifecycle', () => {
     expect(again.status).toBe(409);
   });
 });
+
+describe('POST /leave', () => {
+  it('removes the edge on both sides', async () => {
+    const a = await registerHouse('Alpha');
+    const b = await registerHouse('Bravo');
+    await authedFetch(b, '/link-request', {
+      method: 'POST',
+      body: JSON.stringify({ friendCode: a.friendCode }),
+    });
+    await authedFetch(a, '/link-approve', {
+      method: 'POST',
+      body: JSON.stringify({ fromHouseId: b.houseId }),
+    });
+
+    const res = await authedFetch(a, '/leave', {
+      method: 'POST',
+      body: JSON.stringify({ houseId: b.houseId }),
+    });
+    expect(res.status).toBe(200);
+    expect(await env.SCOREBOARD.get(`links:${a.houseId}`, 'json')).toEqual([]);
+    expect(await env.SCOREBOARD.get(`links:${b.houseId}`, 'json')).toEqual([]);
+  });
+});

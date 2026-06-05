@@ -1,7 +1,7 @@
 import type { Env } from './types';
 import { json } from './lib';
 import { withAuth } from './auth';
-import { register, summary, linkRequest, listRequests, linkApprove, linkDecline } from './handlers';
+import { register, summary, linkRequest, listRequests, linkApprove, linkDecline, leave } from './handlers';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -18,6 +18,7 @@ export default {
     if (method === 'POST' && path === '/link-request') return withAuth(request, env, linkRequest);
     if (method === 'POST' && path === '/link-approve') return withAuth(request, env, linkApprove);
     if (method === 'POST' && path === '/link-decline') return withAuth(request, env, linkDecline);
+    if (method === 'POST' && path === '/leave') return withAuth(request, env, leave);
 
     return json({ error: 'not found' }, 404);
   },
