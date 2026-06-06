@@ -101,6 +101,9 @@
       </div>
     {/if}
   </section>
+  <a href="/leaderboard" class="mt-6 block rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-center py-3 font-medium">
+    🏆 Leaderboard →
+  </a>
 {:else if session.role === 'parent' && data.kids && data.pending}
   <!-- Pending approvals -->
   <section class="mt-6">
@@ -152,6 +155,12 @@
       class="rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-center py-3 font-medium"
     >
       Chore admin →
+    </a>
+    <a href="/leaderboard" class="rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-center py-3 font-medium">
+      🏆 Leaderboard →
+    </a>
+    <a href="/rivals" class="rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 text-center py-3 font-medium">
+      Rivals →
     </a>
   </div>
 
