@@ -98,6 +98,7 @@ export const actions: Actions = {
   refresh: async ({ locals }) => {
     const session = locals.session;
     if (!session) return fail(403, { error: 'Not allowed.' });
+    if (!(await isConnected())) return fail(400, { error: 'Not connected to a scoreboard.' });
     try {
       await pushSummary(session.familyId);
     } catch (e) {

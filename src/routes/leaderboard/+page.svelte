@@ -10,9 +10,7 @@
 <header class="flex items-center justify-between">
   <a href="/" class="text-sm text-slate-500 hover:text-slate-800">← Home</a>
   <h1 class="text-xl font-semibold">Leaderboard</h1>
-  <form method="POST" action="?/refresh" use:enhance>
-    <button class="text-sm text-slate-500 hover:text-slate-800 underline">Refresh</button>
-  </form>
+  <span class="w-12"></span>
 </header>
 
 {#if form?.error}
@@ -29,6 +27,11 @@
     Can't reach the scoreboard right now. Showing nothing until it's back.
   </div>
 {:else}
+  <div class="mt-4 flex justify-end">
+    <form method="POST" action="?/refresh" use:enhance>
+      <button class="text-sm text-slate-500 hover:text-slate-800 underline">Refresh</button>
+    </form>
+  </div>
   {#if data.cup}
     <div class="mt-5 rounded-2xl bg-brand-700 text-white p-4 text-center">
       <div class="text-xs uppercase tracking-wide opacity-80">🏆 Cup holder</div>
