@@ -1,0 +1,27 @@
+# Self-host the allowance app for one household.
+#
+# First time:
+#   1. cp .env.docker.example .env
+#   2. docker compose build
+#   3. docker compose run --rm app node scripts/gen-secrets.js   # paste output into .env
+#   4. edit .env: set ORIGIN to this machine's LAN address (e.g. http://192.168.1.50:3000)
+#   5. docker compose up -d
+#
+# See SETUP-NEW-HOUSEHOLD.md for the full walkthrough.
+
+services:
+  app:
+    build: .
+    image: allowance-app
+    restart: unless-stopped
+    ports:
+      # host:container — change HOST_PORT in .env to expose a different external port.
+      - "${HOST_PORT:-3000}:3000"
+    volumes:
+      # Persists the SQLite database (DATABASE_URL=/data/app.db) across restarts/upgrades.
+      - allowance-data:/data
+      # The household's config + secrets. Read-only inside the container.
+      - ./.env:/app/.env:ro
+
+volumes:
+  allowance-data:

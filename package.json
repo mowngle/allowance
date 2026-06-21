@@ -15,7 +15,8 @@
     "db:backup": "node ./scripts/backup.js",
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "gen-secrets": "node ./scripts/gen-secrets.js"
   },
   "devDependencies": {
     "@sveltejs/adapter-node": "^5.2.0",
