@@ -17,21 +17,19 @@
   <p class="mt-3 rounded bg-red-100 p-3 text-red-800 text-sm">{form.error}</p>
 {/if}
 
-{#if !data.connected}
-  <div class="mt-6 rounded-xl border border-dashed border-slate-300 p-6 text-center text-slate-600">
-    <p class="font-medium">Not connected to a scoreboard yet.</p>
-    <p class="mt-1 text-sm">A parent can connect on the <a href="/rivals" class="underline">Rivals</a> page.</p>
-  </div>
-{:else if data.unreachable}
+{#if data.unreachable}
   <div class="mt-6 rounded-xl bg-amber-100 text-amber-900 p-4 text-sm text-center">
     Can't reach the scoreboard right now. Showing nothing until it's back.
   </div>
 {:else}
-  <div class="mt-4 flex justify-end">
-    <form method="POST" action="?/refresh" use:enhance>
-      <button class="text-sm text-slate-500 hover:text-slate-800 underline">Refresh</button>
-    </form>
-  </div>
+  {#if data.connected}
+    <div class="mt-4 flex justify-end">
+      <form method="POST" action="?/refresh" use:enhance>
+        <button class="text-sm text-slate-500 hover:text-slate-800 underline">Refresh</button>
+      </form>
+    </div>
+  {/if}
+
   {#if data.cup}
     <div class="mt-5 rounded-2xl bg-brand-700 text-white p-4 text-center">
       <div class="text-xs uppercase tracking-wide opacity-80">🏆 Cup holder</div>
@@ -83,21 +81,31 @@
     </section>
   {/if}
 
-  <section class="mt-6">
-    <h2 class="text-xs uppercase tracking-wide text-slate-500 font-medium">Cheer wall</h2>
-    {#if data.cheers.length === 0}
-      <p class="mt-2 text-sm text-slate-500">No cheers yet.</p>
-    {:else}
-      <div class="mt-2 space-y-1">
-        {#each data.cheers as c (c.ts + c.fromName)}
-          <div class="text-sm">
-            <span aria-hidden="true">{c.avatar || '🙂'}</span>
-            <span class="font-medium">{c.fromName}</span>
-            <span class="text-slate-500">({c.fromHouse}):</span>
-            {c.text}
-          </div>
-        {/each}
-      </div>
-    {/if}
-  </section>
+  {#if data.hasRivals}
+    <section class="mt-6">
+      <h2 class="text-xs uppercase tracking-wide text-slate-500 font-medium">Cheer wall</h2>
+      {#if data.cheers.length === 0}
+        <p class="mt-2 text-sm text-slate-500">No cheers yet.</p>
+      {:else}
+        <div class="mt-2 space-y-1">
+          {#each data.cheers as c (c.ts + c.fromName)}
+            <div class="text-sm">
+              <span aria-hidden="true">{c.avatar || '🙂'}</span>
+              <span class="font-medium">{c.fromName}</span>
+              <span class="text-slate-500">({c.fromHouse}):</span>
+              {c.text}
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+  {:else}
+    <div class="mt-6 rounded-xl border border-dashed border-slate-300 p-4 text-center text-slate-600">
+      <p class="text-sm">
+        Playing solo —
+        <a href="/rivals" class="underline">🤝 add a rival household</a>
+        to compete across homes.
+      </p>
+    </div>
+  {/if}
 {/if}
