@@ -1,7 +1,9 @@
 // Payout cycle management.
 //
 // A PayoutCycle is one kid's review for one Mon–Sun week.
-// suggested_amount_cents = age in years × 100 (i.e. age in dollars).
+// suggested_amount_cents comes from the family's configurable payout scheme
+// (resolvePayoutConfig + computeSuggestedCents in payout-config.ts); the default
+// scheme reproduces the original "age in years × $1".
 // Status flow: open → reviewed → paid (or skipped).
 
 import { and, eq, gte, lte, inArray } from 'drizzle-orm';
