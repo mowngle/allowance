@@ -29,7 +29,33 @@ you; it looks like `https://allowance-scoreboard.<name>.workers.dev`).
 
 ---
 
-## Path A — Docker (recommended)
+## Quick start (prebuilt image — recommended)
+
+No cloning or building — just Docker and two small files.
+
+1. **Install Docker** (Docker Desktop, or Docker Engine on Linux).
+2. **Download the two files** into an empty folder:
+   ```sh
+   curl -O https://raw.githubusercontent.com/mowngle/allowance/main/deploy/compose.yml
+   curl -O https://raw.githubusercontent.com/mowngle/allowance/main/deploy/.env.example
+   cp .env.example .env
+   ```
+3. **Set your address** in `.env`: find this machine's LAN IP (Windows `ipconfig`;
+   macOS/Linux `ip addr`) and set `ORIGIN=http://<that-ip>:3000`. Leave the secret lines
+   blank — they generate themselves on first boot.
+4. **Start it:**
+   ```sh
+   docker compose up -d
+   ```
+   First start pulls the image, creates the database, and generates this household's
+   own secrets. Your data lives in the `allowance-data` volume.
+5. **Open** `http://<your-ip>:3000` and continue to [First-run setup](#first-run-setup).
+
+**Update later:** `docker compose pull && docker compose up -d`.
+
+---
+
+## Advanced: build from source (Docker)
 
 From the project folder:
 
@@ -43,30 +69,25 @@ cp .env.docker.example .env
 docker compose build
 ```
 
-**3. Generate your secrets** and paste them into `.env`
-```sh
-docker compose run --rm app node scripts/gen-secrets.js
-```
-Copy the four `VAPID_*` / `SESSION_SECRET` lines it prints, and replace the blank
-secret lines in your `.env` with them.
-
-**4. Set your address** in `.env`
+**3. Set your address** in `.env`
 Find this machine's LAN IP (Windows: `ipconfig`; macOS/Linux: `ifconfig` or `ip addr`)
 — e.g. `192.168.1.50` — and set:
 ```
 ORIGIN=http://192.168.1.50:3000
 ```
 This **must** match the address you actually open in the browser, or logins are
-rejected (a SvelteKit cross-site safety check).
+rejected (a SvelteKit cross-site safety check). Leave the secret lines blank —
+secrets auto-generate on first boot.
 
-**5. Start it**
+**4. Start it**
 ```sh
 docker compose up -d
 ```
-The first start automatically creates the database and applies migrations. Your data
-lives in a Docker volume (`allowance-data`) and survives restarts and upgrades.
+The first start automatically creates the database, applies migrations, and generates
+this household's own secrets. Your data lives in a Docker volume (`allowance-data`)
+and survives restarts and upgrades.
 
-**6. Open it:** `http://192.168.1.50:3000` (use *your* IP). Continue to
+**5. Open it:** `http://192.168.1.50:3000` (use *your* IP). Continue to
 [First-run setup](#first-run-setup) below.
 
 **Updating later:**
@@ -79,7 +100,7 @@ Your data volume is untouched by rebuilds.
 
 ---
 
-## Path B — Manual (Node.js, no Docker)
+## Advanced: manual (Node.js)
 
 **1. Install dependencies**
 ```sh
@@ -163,3 +184,19 @@ Your whole world is the SQLite database.
 - **Leaderboard says "can't reach the scoreboard"** → the cloud scoreboard was briefly
   unreachable; your local app keeps working and it recovers on its own. Check the
   scoreboard URL on the Rivals page is correct.
+
+---
+
+## Publishing updates (maintainer only)
+
+The prebuilt image is built and pushed automatically by GitHub Actions
+(`.github/workflows/docker-publish.yml`).
+
+- **First-time setup:** create a **public** repo at `github.com/mowngle/allowance`,
+  then `git push -u origin main`. The workflow runs on push and publishes
+  `ghcr.io/mowngle/allowance:latest`. After the first run, open the repo's
+  **Packages**, find `allowance`, and confirm its visibility is **Public** (so families
+  pull without a login).
+- **Cut a version:** `git tag v0.1.0 && git push origin v0.1.0` — publishes an
+  immutable `:v0.1.0` image alongside `:latest`.
+- Families on `:latest` get updates with `docker compose pull && docker compose up -d`.
