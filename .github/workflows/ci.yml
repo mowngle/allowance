@@ -25,6 +25,7 @@ jobs:
       - name: App — install & test
         run: |
           npm ci
+          npx svelte-kit sync   # generates .svelte-kit/tsconfig.json (which tsconfig extends)
           npm test
 
       - name: Worker — install & test
