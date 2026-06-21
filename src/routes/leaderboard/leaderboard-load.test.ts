@@ -23,16 +23,18 @@ describe('leaderboard load — solo household (no scoreboard connection)', () =>
     seedInstance(benChore1, today, 'confirmed');
     seedInstance(benChore2, today, 'pending');
 
+    // Cast needed because PageServerLoad wraps the return type; the actual runtime shape is the object below.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = await load(
       ev({ familyId: fam, role: 'parent', personId: 'parent-1', personName: 'Parent' })
-    );
+    ) as any;
 
     expect(data.connected).toBe(false);
     expect(data.unreachable).toBe(false);
     expect(data.hasRivals).toBe(false);
     expect(data.cup).toBeNull();
     expect(data.cheers).toEqual([]);
-    expect(data.ranked.map((k) => k.name)).toEqual(['Amy', 'Ben']); // 100% before 50%
+    expect(data.ranked.map((k: { name: string }) => k.name)).toEqual(['Amy', 'Ben']); // 100% before 50%
     expect(data.ranked[0].rank).toBe(1);
     expect(data.ranked[0].house).toBe('Solo Fam');
   });
