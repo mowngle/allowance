@@ -1,0 +1,20 @@
+# Run the allowance app from the prebuilt image. See SETUP-NEW-HOUSEHOLD.md.
+#   1. cp .env.example .env   (then set ORIGIN to this machine's LAN address)
+#   2. docker compose up -d
+# Update later:  docker compose pull && docker compose up -d
+
+services:
+  app:
+    image: ghcr.io/mowngle/allowance:latest
+    restart: unless-stopped
+    ports:
+      # host:container — set HOST_PORT in .env to change the external port.
+      - "${HOST_PORT:-3000}:3000"
+    volumes:
+      # Persists the SQLite database (DATABASE_URL=/data/app.db) across restarts/upgrades.
+      - allowance-data:/data
+      # Writable (NOT :ro) so first-boot auto-generated secrets persist back to your .env.
+      - ./.env:/app/.env
+
+volumes:
+  allowance-data:

@@ -21,7 +21,8 @@ services:
       # Persists the SQLite database (DATABASE_URL=/data/app.db) across restarts/upgrades.
       - allowance-data:/data
       # The household's config + secrets. Read-only inside the container.
-      - ./.env:/app/.env:ro
+      # Writable so first-boot auto-generated secrets persist back to .env.
+      - ./.env:/app/.env
 
 volumes:
   allowance-data:
