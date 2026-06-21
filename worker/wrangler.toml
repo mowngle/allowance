@@ -5,9 +5,9 @@ compatibility_date = "2024-09-23"
 # without it); also applied at deploy.
 compatibility_flags = ["nodejs_compat"]
 
-# For local tests the KV namespace is simulated by vitest-pool-workers, so this
-# placeholder id is fine. Replace with the real id from `wrangler kv namespace
-# create` before `wrangler deploy` (see Task 8).
+# Local tests simulate KV via vitest-pool-workers and ignore this id. The id
+# below is the real production namespace created with `wrangler kv namespace
+# create SCOREBOARD`.
 [[kv_namespaces]]
 binding = "SCOREBOARD"
-id = "0000000000000000000000000000000000"
+id = "d6e027aa4f264662bf065efa7128fef5"
