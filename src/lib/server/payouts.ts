@@ -7,6 +7,7 @@
 import { and, eq, gte, lte, inArray } from 'drizzle-orm';
 import { db, schema } from './db';
 import { todayIso, weekStarting, weekEnding, ageOn } from './dates';
+import { resolvePayoutConfig, computeSuggestedCents } from './payout-config';
 
 export type WeeklyReviewItem = {
   cycleId: string;
@@ -34,11 +35,25 @@ export async function getCurrentWeekReview(familyId: string): Promise<WeeklyRevi
   const wkStart = weekStarting(today);
   const wkEnd = weekEnding(today);
 
+  const famRows = await db
+    .select({
+      payoutMode: schema.families.payoutMode,
+      payoutCentsPerYear: schema.families.payoutCentsPerYear,
+      payoutBonusCents: schema.families.payoutBonusCents,
+      payoutFixedCents: schema.families.payoutFixedCents,
+    })
+    .from(schema.families)
+    .where(eq(schema.families.id, familyId))
+    .limit(1);
+  const family = famRows[0];
+  if (!family) return [];
+
   const kids = await db
     .select({
       id: schema.persons.id,
       name: schema.persons.name,
       birthdate: schema.persons.birthdate,
+      payoutOverride: schema.persons.payoutOverride,
     })
     .from(schema.persons)
     .where(and(eq(schema.persons.familyId, familyId), eq(schema.persons.role, 'kid')));
@@ -46,7 +61,7 @@ export async function getCurrentWeekReview(familyId: string): Promise<WeeklyRevi
   const items: WeeklyReviewItem[] = [];
   for (const kid of kids) {
     const age = kid.birthdate ? ageOn(kid.birthdate, today) : 0;
-    const suggested = Math.max(0, age) * 100;
+    const suggested = computeSuggestedCents(resolvePayoutConfig(family, kid.payoutOverride), age);
 
     // Get-or-create payout cycle
     let cycleRows = await db
