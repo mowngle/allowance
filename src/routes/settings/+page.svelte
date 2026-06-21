@@ -74,6 +74,13 @@
 {/if}
 
 <section class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+  <a href="/settings/payouts" class="flex items-center justify-between">
+    <span class="font-medium">Payouts</span>
+    <span class="text-slate-400 text-sm">Configure suggested amounts →</span>
+  </a>
+</section>
+
+<section class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
   <h2 class="font-medium">Notifications on this device</h2>
   <p class="text-xs text-slate-500 mt-1">
     Get pinged when a kid marks a chore done or it's Sunday review time. Requires browser permission.
