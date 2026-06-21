@@ -24,6 +24,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     .from(schema.families)
     .where(eq(schema.families.id, locals.session.familyId))
     .limit(1))[0];
+  if (!fam) throw error(404, 'Family not found');
 
   const kidRows = await db
     .select({ id: schema.persons.id, name: schema.persons.name, override: schema.persons.payoutOverride })
