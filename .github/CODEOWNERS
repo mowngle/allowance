@@ -1,0 +1,4 @@
+# Default owner for everything in the repo.
+# If branch protection later requires Code Owner review, PRs touching any path
+# will need an approval from an owner listed here. Solo for now.
+* @mowngle
