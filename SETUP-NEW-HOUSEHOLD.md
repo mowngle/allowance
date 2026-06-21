@@ -33,6 +33,13 @@ you; it looks like `https://allowance-scoreboard.<name>.workers.dev`).
 
 No cloning or building — just Docker and two small files.
 
+**Fastest — one command (Linux/macOS):**
+```sh
+curl -fsSL https://raw.githubusercontent.com/mowngle/allowance/main/deploy/bootstrap.sh | sh
+```
+This does steps 1–4 below for you (downloads the files, sets `ORIGIN` from your LAN address,
+and launches). Prefer to see each step? Follow the manual version:
+
 1. **Install Docker** (Docker Desktop, or Docker Engine on Linux).
 2. **Download the two files** into an empty folder:
    ```sh

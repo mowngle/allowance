@@ -1,62 +1,71 @@
 # Allowance
 
-Family chore + allowance tracker. Self-hosted on the Mac mini, LAN-only.
+A self-hosted family chore + allowance tracker. Each family runs its own private copy on a
+machine at home — a PC, a mini-PC, or a Raspberry Pi — and your family's chores, money, and
+data never leave it. Families can optionally opt into a friendly **cross-home leaderboard**,
+the only thing ever shared between homes.
 
-## Foundation (this checkpoint)
+## Features
 
-Just the SvelteKit + Tailwind + Drizzle scaffold. No DB yet, no auth, no real screens — just `npm run dev` boots a placeholder page.
+- **Chores** with flexible recurrence and per-chore expiry (vanish or roll-forward)
+- **Weekly review** with **configurable payouts** — a fixed amount, or age × rate + bonus,
+  set per family with optional per-kid overrides
+- **Append-only ledger** with kid-visible debit descriptions; a kid's balance is the sum of
+  their entries
+- **Parent PIN** gating approvals and money actions; **web push** to parent phones
+- **Cross-home leaderboard** (opt-in) — consistency %, streaks, badges, and canned "cheers"
+  across linked households via a small Cloudflare Worker; **money stays private to each home**
+- **Fire-tablet wrapper** — a Kotlin WebView app so kids' Amazon Fire tablets reach the app
+  without a browser
 
-### Run it
+## Quick start (self-host)
 
-```powershell
-cd H:\dev\allowance
-npm install
-copy .env.example .env
-npm run dev
+On a Linux or macOS host with Docker installed, one command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mowngle/allowance/main/deploy/bootstrap.sh | sh
 ```
 
-Then open http://localhost:5173. You should see "Allowance / Project scaffolded."
+It downloads the compose file, sets your home's address, and launches the app (pulling the
+prebuilt image, creating the database, and generating this household's own secrets). Then open
+the URL it prints and onboard your family.
 
-The dev server also binds to `0.0.0.0` so you can reach it from other devices on the LAN at `http://<your-pc-ip>:5173`.
+Prefer to do it by hand, or running on a Raspberry Pi / Windows / from source? See
+**[SETUP-NEW-HOUSEHOLD.md](SETUP-NEW-HOUSEHOLD.md)** for the Docker, build-from-source, and
+manual paths — plus how to connect to another household's leaderboard.
 
-## Stack
+## How it works
 
-- SvelteKit + Node adapter
-- TypeScript
-- SQLite via better-sqlite3, Drizzle ORM
-- TailwindCSS
-- Self-hosted on Mac mini (eventually); LAN-only auth
+```
+  YOUR HOME                          FRIEND'S HOME
+  app + SQLite (LAN)                 app + SQLite (LAN)
+         \                              /
+          \___ each pushes only ______ /
+               derived summary numbers
+               to a shared Cloudflare
+               Worker, and links via
+               Friend Codes
+```
 
-## Architecture decisions (locked, see memory)
+Each home is fully self-sufficient and private. The Worker only ever holds derived leaderboard
+numbers (consistency %, streaks, badges) — never chore details, descriptions, or money.
 
-- Pure chores model, weekly payout = kid's age in dollars conditional on responsibility
-- Per-chore expiry rule (vanish or roll-forward)
-- Kid mid-week sees "On track" or "N chores behind" — no live $ amount
-- Append-only ledger; debit descriptions visible to kid
-- Piggy bank physically holds cash equal to app balance
-- Either parent device approves, no coordination UI
-- **Parent phones:** regular PWA + web push
-- **Kid Fire tablets:** WebView wrapper APK with local AlarmManager notifications (Silk push doesn't work on Fire OS)
+## Built with
 
-## Wishlist (deferred)
+SvelteKit (`adapter-node`) · SQLite + Drizzle ORM · TailwindCSS · Cloudflare Workers + KV
+(the scoreboard) · Kotlin (the Fire-tablet wrapper).
 
-- **Profile icons for everyone** — emoji picker for each person, displayed on tiles, headers, and the claim screen. Schema already has `persons.avatar_url`. Build after launch.
+## Development
 
-## Roadmap
+```sh
+npm install
+npm run dev      # http://localhost:5173 — also reachable on your LAN
+```
 
-- [x] Project scaffold
-- [ ] Database schema (families, persons, chores, chore_instances, payout_cycles, ledger_entries, devices, push_subscriptions)
-- [ ] First migration + seed for dev
-- [ ] Onboarding: create family, add kids with birthdates, claim devices
-- [ ] Parent PIN auth + session cookies
-- [ ] Chore admin (CRUD with recurrence + expiry rule)
-- [ ] Daily chore instance generation
-- [ ] Kid home view (today's chores + "on track / N behind")
-- [ ] Mark-done flow → parent approval queue
-- [ ] Sunday review screen (one-tap payout per kid)
-- [ ] Debit recording with descriptions
-- [ ] History views (kid + parent)
-- [ ] Web push for parents
-- [ ] Nightly JSON backup of the ledger
-- [ ] Wrapper APK template for kid tablets
-- [ ] Mac mini deploy (git remote + post-receive hook + PM2)
+Run the tests with `npx svelte-kit sync && npm test` (the sync step generates the tsconfig base
+that the suite needs on a fresh clone). The cross-home scoreboard Worker lives in
+[`worker/`](worker/) and has its own README.
+
+## License
+
+[MIT](LICENSE)
