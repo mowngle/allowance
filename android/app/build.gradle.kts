@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.allowance.app"
-    compileSdk = 28
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.allowance.app"
