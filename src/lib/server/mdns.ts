@@ -3,6 +3,7 @@ import Bonjour from 'bonjour-service';
 let instance: InstanceType<typeof Bonjour> | null = null;
 
 export function startMdnsAdvertisement(): void {
+  if (instance) return;
   const port = parseInt(process.env.PORT || '3000', 10);
   instance = new Bonjour();
   instance.publish({ name: 'Allowance', type: 'allowance', port });

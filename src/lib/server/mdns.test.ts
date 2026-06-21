@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('bonjour-service', () => {
   const publishFn = vi.fn();
@@ -21,6 +21,7 @@ describe('mDNS advertisement', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.resetModules();
     delete process.env.PORT;
   });
 
