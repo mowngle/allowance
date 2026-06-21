@@ -1,0 +1,8 @@
+<resources>
+    <style name="Theme.Allowance" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="colorPrimary">@color/blue_primary</item>
+        <item name="colorPrimaryDark">@color/blue_dark</item>
+        <item name="android:windowBackground">@color/slate_bg</item>
+        <item name="android:statusBarColor">@color/blue_primary</item>
+    </style>
+</resources>
