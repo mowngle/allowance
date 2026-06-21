@@ -50,7 +50,7 @@ else
     if [ -r /dev/tty ]; then
       printf 'Detected this machine on the LAN as: %s\n' "${ip:-<none found>}"
       printf 'Press Enter to use http://%s:%s, or type a different IP/hostname: ' "${ip:-CHANGE-ME}" "$PORT"
-      if read answer </dev/tty && [ -n "$answer" ]; then
+      if read -r answer </dev/tty && [ -n "$answer" ]; then
         ip="$answer"
       fi
     else
