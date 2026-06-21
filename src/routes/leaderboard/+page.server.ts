@@ -2,14 +2,10 @@
 
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
-import {
-  isConnected,
-  pushSummary,
-  getBoard,
-  postCheer,
-} from '$lib/server/scoreboard';
+import { isConnected, pushSummary, getBoard, postCheer } from '$lib/server/scoreboard';
+import { buildLocalSummary } from '$lib/server/leaderboard';
 import { canPostCheers } from '$lib/server/cheers';
-import { rankedKids, houseCup } from '$lib/leaderboard-view';
+import { rankedKids, houseCup, type ViewHouse } from '$lib/leaderboard-view';
 import { CHEER_PHRASES, phraseText } from '$lib/cheers';
 import { db, schema } from '$lib/server/db';
 import { eq } from 'drizzle-orm';
@@ -18,51 +14,58 @@ export const load: PageServerLoad = async ({ locals }) => {
   const session = locals.session;
   if (!session) throw redirect(303, '/claim');
 
-  if (!(await isConnected())) {
-    return { connected: false as const };
+  const connected = await isConnected();
+
+  let houses: ViewHouse[];
+  let cheersRaw: { fromHouse: string; fromName: string; avatar: string; phraseId: string; ts: number }[] = [];
+
+  if (connected) {
+    try {
+      await pushSummary(session.familyId);
+    } catch (e) {
+      console.error('[leaderboard] pushSummary failed (showing last-known):', e);
+    }
+    try {
+      const board = await getBoard();
+      houses = board.houses;
+      cheersRaw = board.cheers;
+    } catch (e) {
+      console.error('[leaderboard] getBoard failed:', e);
+      return {
+        connected: true as const,
+        unreachable: true as const,
+        ranked: [],
+        cup: null,
+        hasRivals: false,
+        cheers: [],
+        viewerCanCheer: false,
+        phrases: CHEER_PHRASES,
+      };
+    }
+  } else {
+    // Solo: build this household's own summary locally — no worker calls.
+    houses = [await buildLocalSummary(session.familyId)];
   }
 
-  try {
-    await pushSummary(session.familyId);
-  } catch (e) {
-    console.error('[leaderboard] pushSummary failed (showing last-known):', e);
-  }
+  const ranked = rankedKids(houses);
+  const hasRivals = houses.length >= 2;
+  const cup = hasRivals ? houseCup(houses) : null;
 
-  let board;
-  try {
-    board = await getBoard();
-  } catch (e) {
-    console.error('[leaderboard] getBoard failed:', e);
-    return { connected: true as const, unreachable: true as const };
-  }
+  const viewerCanCheer =
+    hasRivals && session.role === 'kid' && (await canPostCheers(session.personId));
 
-  const ranked = rankedKids(board.houses);
-  const cup = houseCup(board.houses);
-
-  const viewerCanCheer = session.role === 'kid' && (await canPostCheers(session.personId));
-  let viewerAvatar = '';
-  if (viewerCanCheer) {
-    const rows = await db
-      .select({ avatarUrl: schema.persons.avatarUrl })
-      .from(schema.persons)
-      .where(eq(schema.persons.id, session.personId))
-      .limit(1);
-    viewerAvatar = rows[0]?.avatarUrl ?? '';
-  }
-
-  const cheers = board.cheers
-    .map((c) => ({ ...c, text: phraseText(c.phraseId) ?? c.phraseId }))
-    .reverse();
+  const cheers = hasRivals
+    ? cheersRaw.map((c) => ({ ...c, text: phraseText(c.phraseId) ?? c.phraseId })).reverse()
+    : [];
 
   return {
-    connected: true as const,
+    connected,
     unreachable: false as const,
     ranked,
     cup,
+    hasRivals,
     cheers,
     viewerCanCheer,
-    viewerName: session.personName,
-    viewerAvatar,
     phrases: CHEER_PHRASES,
   };
 };
