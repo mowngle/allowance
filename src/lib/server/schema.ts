@@ -19,6 +19,11 @@ export const families = sqliteTable('families', {
   // 0=Sunday … 5=Friday … 6=Saturday. Default Sunday — review happens at the
   // end of the responsibility week, before the new week begins.
   payoutDay: integer('payout_day').notNull().default(0),
+  // Payout scheme for the family (default reproduces the original "age in dollars").
+  payoutMode: text('payout_mode', { enum: ['age', 'fixed'] }).notNull().default('age'),
+  payoutCentsPerYear: integer('payout_cents_per_year').notNull().default(100),
+  payoutBonusCents: integer('payout_bonus_cents').notNull().default(0),
+  payoutFixedCents: integer('payout_fixed_cents').notNull().default(0),
   createdAt: integer('created_at').notNull(),
 });
 
@@ -38,6 +43,8 @@ export const persons = sqliteTable(
     avatarUrl: text('avatar_url'),
     // Per-kid: may this kid post canned cheers to the cross-home wall? Default off.
     canPostCheers: integer('can_post_cheers', { mode: 'boolean' }).notNull().default(false),
+    // Per-kid payout override (JSON: {mode,centsPerYear,bonusCents,fixedCents}); null = inherit family.
+    payoutOverride: text('payout_override'),
     // Argon2/bcrypt hash. Nullable; only parents have a PIN.
     parentPinHash: text('parent_pin_hash'),
     createdAt: integer('created_at').notNull(),
