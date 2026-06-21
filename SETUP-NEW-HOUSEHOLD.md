@@ -20,8 +20,8 @@ you; it looks like `https://allowance-scoreboard.<name>.workers.dev`).
 - A computer that's **on when your family uses the app** (a desktop, a mini-PC, a
   Raspberry Pi 4/5, etc.). Phones and tablets just open it in a browser; they don't
   host it.
-- **Either Docker** (recommended — easiest) **or Node.js 20+** (manual path).
-- The app's code (your friend shares a private Git repo to `git clone`, or a zip).
+- **Docker** (for the recommended and build paths) **or Node.js 20+** (for the manual path).
+- For the **recommended** path, nothing else — you just download two files (below). The **Advanced** paths instead clone the public repo `github.com/mowngle/allowance`.
 
 > **Tip:** give the host machine a **fixed IP** in your router (a "DHCP reservation").
 > Everyone's bookmarks and the app's security setting depend on the address not
@@ -57,7 +57,11 @@ No cloning or building — just Docker and two small files.
 
 ## Advanced: build from source (Docker)
 
-From the project folder:
+**0. Get the source**
+```sh
+git clone https://github.com/mowngle/allowance
+cd allowance
+```
 
 **1. Create your config file**
 ```sh
@@ -112,6 +116,7 @@ npm install
 cp .env.docker.example .env
 npm run gen-secrets   # paste the 4 lines into .env
 ```
+(That's the root `.env.docker.example` template — used when running Node directly, not the `deploy/.env.example` from the quick start.)
 Then in `.env` set your address and a **local** database path:
 ```
 ORIGIN=http://192.168.1.50:3000
