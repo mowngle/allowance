@@ -3,4 +3,7 @@
     <string name="discovery_searching">Looking for Allowance server…</string>
     <string name="discovery_failed">Can\'t find the Allowance server.\nMake sure you\'re on the home WiFi.</string>
     <string name="retry">Try Again</string>
+    <string name="manual_label">Or enter the server address:</string>
+    <string name="manual_hint">192.168.1.21:5173</string>
+    <string name="connect">Connect</string>
 </resources>

@@ -1,27 +1,26 @@
 package com.allowance.app
 
-import android.content.Context
-import android.net.nsd.NsdManager
-import android.net.nsd.NsdServiceInfo
 import android.os.Handler
 import android.os.Looper
+import org.json.JSONObject
+import java.net.DatagramPacket
+import java.net.DatagramSocket
 
-class ServerDiscovery(context: Context) {
+class ServerDiscovery {
 
     companion object {
-        private const val SERVICE_TYPE = "_allowance._tcp."
+        private const val BEACON_PORT = 41234
         private const val TIMEOUT_MS = 10_000L
     }
 
-    private val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
     private val handler = Handler(Looper.getMainLooper())
-    private var isDiscovering = false
     private var timeoutRunnable: Runnable? = null
-
-    private var discoveryListener: NsdManager.DiscoveryListener? = null
+    private var socket: DatagramSocket? = null
+    private var listenerThread: Thread? = null
+    private var stopped = false
 
     fun discover(onFound: (String) -> Unit, onTimeout: () -> Unit) {
-        if (isDiscovering) return
+        stopped = false
 
         val timeout = Runnable {
             stop()
@@ -30,63 +29,47 @@ class ServerDiscovery(context: Context) {
         timeoutRunnable = timeout
         handler.postDelayed(timeout, TIMEOUT_MS)
 
-        val listener = object : NsdManager.DiscoveryListener {
-            override fun onDiscoveryStarted(serviceType: String) {
-                isDiscovering = true
-            }
+        listenerThread = Thread listener@{
+            try {
+                val sock = DatagramSocket(BEACON_PORT)
+                sock.soTimeout = (TIMEOUT_MS + 1_000).toInt()
+                socket = sock
 
-            override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                nsdManager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
-                    override fun onResolveFailed(si: NsdServiceInfo, errorCode: Int) {
-                        // Ignore resolve failures — wait for another service or timeout
-                    }
+                val buf = ByteArray(512)
+                val packet = DatagramPacket(buf, buf.size)
 
-                    override fun onServiceResolved(si: NsdServiceInfo) {
-                        val host = si.host?.hostAddress ?: return
-                        val port = si.port
-                        val url = "http://$host:$port"
-                        handler.post {
-                            handler.removeCallbacks(timeout)
-                            stop()
-                            onFound(url)
+                while (!stopped) {
+                    try {
+                        sock.receive(packet)
+                        val json = String(packet.data, 0, packet.length)
+                        val obj = JSONObject(json)
+                        if (obj.optString("service") == "allowance") {
+                            val port = obj.getInt("port")
+                            val host = packet.address.hostAddress
+                            val url = "http://$host:$port"
+                            handler.post {
+                                handler.removeCallbacks(timeout)
+                                stop()
+                                onFound(url)
+                            }
+                            return@listener
                         }
+                    } catch (_: java.net.SocketTimeoutException) {
+                        break
                     }
-                })
-            }
-
-            override fun onServiceLost(serviceInfo: NsdServiceInfo) {}
-            override fun onDiscoveryStopped(serviceType: String) {
-                isDiscovering = false
-            }
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
-                isDiscovering = false
-                handler.post {
-                    handler.removeCallbacks(timeout)
-                    onTimeout()
                 }
+            } catch (_: Exception) {
+                // Socket closed or other error — timeout will handle it
             }
-            override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
-                isDiscovering = false
-            }
-        }
-
-        discoveryListener = listener
-        nsdManager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, listener)
+        }.also { it.isDaemon = true; it.start() }
     }
 
     fun stop() {
+        stopped = true
         timeoutRunnable?.let { handler.removeCallbacks(it) }
         timeoutRunnable = null
-        if (isDiscovering) {
-            discoveryListener?.let {
-                try {
-                    nsdManager.stopServiceDiscovery(it)
-                } catch (_: IllegalArgumentException) {
-                    // Already stopped
-                }
-            }
-        }
-        discoveryListener = null
-        isDiscovering = false
+        try { socket?.close() } catch (_: Exception) {}
+        socket = null
+        listenerThread = null
     }
 }
