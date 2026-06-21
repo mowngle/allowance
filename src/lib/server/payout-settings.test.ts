@@ -5,18 +5,20 @@ import { seedFamily, seedKid } from '$lib/server/test/seed';
 import { saveFamilyDefault, saveKidOverride, clearKidOverride } from './payout-settings';
 
 describe('payout-settings mutations', () => {
-  it('saveFamilyDefault writes the four columns', async () => {
+  it('saveFamilyDefault writes all four columns', async () => {
     const fam = seedFamily('Fam');
-    await saveFamilyDefault(fam, { mode: 'fixed', rateCents: 0, bonusCents: 0, fixedCents: 2000 });
+    await saveFamilyDefault(fam, { mode: 'age', rateCents: 150, bonusCents: 200, fixedCents: 2000 });
     const row = (await db
       .select({
         mode: schema.families.payoutMode,
+        cpy: schema.families.payoutCentsPerYear,
+        bonus: schema.families.payoutBonusCents,
         fixed: schema.families.payoutFixedCents,
       })
       .from(schema.families)
       .where(eq(schema.families.id, fam))
       .limit(1))[0];
-    expect(row).toEqual({ mode: 'fixed', fixed: 2000 });
+    expect(row).toEqual({ mode: 'age', cpy: 150, bonus: 200, fixed: 2000 });
   });
 
   it('saveKidOverride stores JSON; clearKidOverride nulls it', async () => {
