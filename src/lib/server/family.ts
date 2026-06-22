@@ -23,7 +23,11 @@ export async function getKidSummaries(familyId: string): Promise<KidSummary[]> {
       birthdate: schema.persons.birthdate,
     })
     .from(schema.persons)
-    .where(and(eq(schema.persons.familyId, familyId), eq(schema.persons.role, 'kid')));
+    .where(and(
+      eq(schema.persons.familyId, familyId),
+      eq(schema.persons.role, 'kid'),
+      eq(schema.persons.active, true),
+    ));
 
   const today = todayIso();
 

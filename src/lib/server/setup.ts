@@ -27,13 +27,21 @@ export async function getOrInitOnlyFamily(): Promise<{
   const parents = await db
     .select({ id: schema.persons.id })
     .from(schema.persons)
-    .where(and(eq(schema.persons.familyId, fam.id), eq(schema.persons.role, 'parent')))
+    .where(and(
+      eq(schema.persons.familyId, fam.id),
+      eq(schema.persons.role, 'parent'),
+      eq(schema.persons.active, true),
+    ))
     .limit(1);
 
   const kids = await db
     .select({ id: schema.persons.id })
     .from(schema.persons)
-    .where(and(eq(schema.persons.familyId, fam.id), eq(schema.persons.role, 'kid')))
+    .where(and(
+      eq(schema.persons.familyId, fam.id),
+      eq(schema.persons.role, 'kid'),
+      eq(schema.persons.active, true),
+    ))
     .limit(1);
 
   return {
@@ -47,7 +55,11 @@ export async function getFirstParent(familyId: string): Promise<{ id: string; na
   const rows = await db
     .select({ id: schema.persons.id, name: schema.persons.name })
     .from(schema.persons)
-    .where(and(eq(schema.persons.familyId, familyId), eq(schema.persons.role, 'parent')))
+    .where(and(
+      eq(schema.persons.familyId, familyId),
+      eq(schema.persons.role, 'parent'),
+      eq(schema.persons.active, true),
+    ))
     .limit(1);
   return rows[0] ?? null;
 }
