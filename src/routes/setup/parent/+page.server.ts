@@ -9,7 +9,7 @@ import { setParentPin } from '$lib/server/pin';
 export const load: PageServerLoad = async () => {
   const fam = await getOrInitOnlyFamily();
   if (!fam) throw redirect(303, '/setup');
-  if (fam.hasParent) throw redirect(303, '/setup/kids');
+  if (fam.hasParent) throw redirect(303, '/setup/members');
   return { familyId: fam.id };
 };
 
@@ -17,7 +17,7 @@ export const actions: Actions = {
   default: async ({ request }) => {
     const fam = await getOrInitOnlyFamily();
     if (!fam) throw redirect(303, '/setup');
-    if (fam.hasParent) throw redirect(303, '/setup/kids');
+    if (fam.hasParent) throw redirect(303, '/setup/members');
 
     const data = await request.formData();
     const name = (data.get('name')?.toString() ?? '').trim();
@@ -48,6 +48,6 @@ export const actions: Actions = {
       }
     }
 
-    throw redirect(303, '/setup/kids');
+    throw redirect(303, '/setup/members');
   },
 };

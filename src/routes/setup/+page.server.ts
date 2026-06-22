@@ -10,7 +10,7 @@ export const load: PageServerLoad = async () => {
   if (fam) {
     // Family exists; jump to whatever step is next.
     if (!fam.hasParent) throw redirect(303, '/setup/parent');
-    throw redirect(303, '/setup/kids');
+    throw redirect(303, '/setup/members');
   }
   return {};
 };
