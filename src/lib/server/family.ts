@@ -99,7 +99,11 @@ export async function getPendingApprovals(familyId: string): Promise<PendingAppr
     .from(schema.choreInstances)
     .innerJoin(schema.chores, eq(schema.chores.id, schema.choreInstances.choreId))
     .innerJoin(schema.persons, eq(schema.persons.id, schema.chores.assigneeId))
-    .where(and(eq(schema.persons.familyId, familyId), eq(schema.choreInstances.status, 'done')));
+    .where(and(
+      eq(schema.persons.familyId, familyId),
+      eq(schema.persons.active, true),
+      eq(schema.choreInstances.status, 'done'),
+    ));
 
   return rows
     .map((r) => ({

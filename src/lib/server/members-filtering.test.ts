@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { seedFamily } from './test/seed';
+import { seedFamily, seedChore, seedInstance } from './test/seed';
 import { addKid, addParent, archiveMember } from './members';
-import { getKidSummaries } from './family';
+import { getKidSummaries, getPendingApprovals } from './family';
 import { listKidCheerPerms } from './cheers';
 import { getCurrentWeekReview } from './payouts';
 import { getOrInitOnlyFamily } from './setup';
+import { todayIso } from './dates';
 
 describe('archived members are excluded from active views', () => {
   it('getKidSummaries omits an archived kid', async () => {
@@ -42,5 +43,20 @@ describe('archived members are excluded from active views', () => {
     const info = await getOrInitOnlyFamily();
     expect(info?.hasKid).toBe(false);
     expect(info?.hasParent).toBe(true);
+  });
+
+  it('getPendingApprovals omits an archived kid\'s done chore', async () => {
+    const fam = seedFamily();
+    const a = await addKid({ familyId: fam, name: 'A', birthdate: '2016-01-01' });
+    const b = await addKid({ familyId: fam, name: 'B', birthdate: '2016-01-01' });
+    const choreA = seedChore(fam, a);
+    const choreB = seedChore(fam, b);
+    seedInstance(choreA, todayIso(), 'done', Date.now());
+    seedInstance(choreB, todayIso(), 'done', Date.now());
+    await archiveMember({ id: b, familyId: fam });
+    const approvals = await getPendingApprovals(fam);
+    const kidIds = approvals.map((x) => x.kidId);
+    expect(kidIds).toContain(a);
+    expect(kidIds).not.toContain(b);
   });
 });
