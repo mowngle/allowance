@@ -29,7 +29,7 @@ export const load: PageServerLoad = async ({ locals }) => {
   const kidRows = await db
     .select({ id: schema.persons.id, name: schema.persons.name, override: schema.persons.payoutOverride })
     .from(schema.persons)
-    .where(and(eq(schema.persons.familyId, locals.session.familyId), eq(schema.persons.role, 'kid')));
+    .where(and(eq(schema.persons.familyId, locals.session.familyId), eq(schema.persons.role, 'kid'), eq(schema.persons.active, true)));
 
   return {
     family: {
