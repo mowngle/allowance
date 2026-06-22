@@ -6,19 +6,13 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { db, schema } from './db';
+import { getConfig } from './config';
 
+// Setup is "complete" once the wizard's final step records it explicitly (see
+// completeSetup() in members.ts). Migration 0004 backfills this marker for any
+// pre-existing install that already had a parent.
 export async function isSetupComplete(): Promise<boolean> {
-  const fams = await db
-    .select({ id: schema.families.id })
-    .from(schema.families)
-    .limit(1);
-  if (fams.length === 0) return false;
-  const parents = await db
-    .select({ id: schema.persons.id })
-    .from(schema.persons)
-    .where(eq(schema.persons.role, 'parent'))
-    .limit(1);
-  return parents.length > 0;
+  return (await getConfig('setup_completed')) === '1';
 }
 
 export async function getOrInitOnlyFamily(): Promise<{
