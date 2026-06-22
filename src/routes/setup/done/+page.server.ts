@@ -1,10 +1,11 @@
 // Step 4: claim this device as the first parent's device, then redirect home.
-// This is a GET-redirect so the form on /setup/kids can navigate here without a POST.
+// This is a GET-redirect so the form on /setup/members can navigate here without a POST.
 
 import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 import { getOrInitOnlyFamily, getFirstParent } from '$lib/server/setup';
 import { claimDevice, COOKIE_NAME } from '$lib/server/auth';
+import { completeSetup } from '$lib/server/members';
 
 export const load: PageServerLoad = async ({ cookies }) => {
   const fam = await getOrInitOnlyFamily();
@@ -13,6 +14,8 @@ export const load: PageServerLoad = async ({ cookies }) => {
 
   const parent = await getFirstParent(fam.id);
   if (!parent) throw redirect(303, '/setup/parent');
+
+  await completeSetup();
 
   // Auto-claim this device for the first parent.
   const { token } = await claimDevice({

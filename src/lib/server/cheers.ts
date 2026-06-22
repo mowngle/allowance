@@ -24,7 +24,11 @@ export async function listKidCheerPerms(familyId: string): Promise<KidCheerPerm[
       canPostCheers: schema.persons.canPostCheers,
     })
     .from(schema.persons)
-    .where(and(eq(schema.persons.familyId, familyId), eq(schema.persons.role, 'kid')));
+    .where(and(
+      eq(schema.persons.familyId, familyId),
+      eq(schema.persons.role, 'kid'),
+      eq(schema.persons.active, true),
+    ));
   return rows.map((r) => ({ id: r.id, name: r.name, canPostCheers: !!r.canPostCheers }));
 }
 

@@ -45,6 +45,9 @@ export const persons = sqliteTable(
     canPostCheers: integer('can_post_cheers', { mode: 'boolean' }).notNull().default(false),
     // Per-kid payout override (JSON: {mode,centsPerYear,bonusCents,fixedCents}); null = inherit family.
     payoutOverride: text('payout_override'),
+    // Soft-archive flag. Archived members keep their ledger/history but drop out of
+    // active views (chore assignment, review, leaderboard, claim).
+    active: integer('active', { mode: 'boolean' }).notNull().default(true),
     // Argon2/bcrypt hash. Nullable; only parents have a PIN.
     parentPinHash: text('parent_pin_hash'),
     createdAt: integer('created_at').notNull(),

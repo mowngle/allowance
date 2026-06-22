@@ -58,7 +58,11 @@ export async function getCurrentWeekReview(familyId: string): Promise<WeeklyRevi
       payoutOverride: schema.persons.payoutOverride,
     })
     .from(schema.persons)
-    .where(and(eq(schema.persons.familyId, familyId), eq(schema.persons.role, 'kid')));
+    .where(and(
+      eq(schema.persons.familyId, familyId),
+      eq(schema.persons.role, 'kid'),
+      eq(schema.persons.active, true),
+    ));
 
   const items: WeeklyReviewItem[] = [];
   for (const kid of kids) {

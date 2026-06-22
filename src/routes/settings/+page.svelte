@@ -74,6 +74,13 @@
 {/if}
 
 <section class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+  <a href="/settings/members" class="flex items-center justify-between">
+    <span class="font-medium">Family members</span>
+    <span class="text-slate-400 text-sm">Add or edit kids &amp; co-parents →</span>
+  </a>
+</section>
+
+<section class="mt-4 rounded-xl border border-slate-200 bg-white p-4">
   <a href="/settings/payouts" class="flex items-center justify-between">
     <span class="font-medium">Payouts</span>
     <span class="text-slate-400 text-sm">Configure suggested amounts →</span>

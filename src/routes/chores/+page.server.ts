@@ -20,7 +20,8 @@ export const load: PageServerLoad = async ({ locals }) => {
       .where(
         and(
           eq(schema.persons.familyId, locals.session.familyId),
-          eq(schema.persons.role, 'kid')
+          eq(schema.persons.role, 'kid'),
+          eq(schema.persons.active, true)
         )
       ),
   ]);

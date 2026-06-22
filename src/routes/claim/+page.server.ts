@@ -7,6 +7,7 @@
 
 import type { Actions, PageServerLoad } from './$types';
 import { redirect, fail } from '@sveltejs/kit';
+import { eq } from 'drizzle-orm';
 import { db, schema } from '$lib/server/db';
 import { claimDevice, COOKIE_NAME } from '$lib/server/auth';
 
@@ -25,7 +26,8 @@ export const load: PageServerLoad = async () => {
       name: schema.persons.name,
       role: schema.persons.role,
     })
-    .from(schema.persons);
+    .from(schema.persons)
+    .where(eq(schema.persons.active, true));
 
   return { families, persons };
 };
