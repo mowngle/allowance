@@ -5,11 +5,30 @@
 // (resolvePayoutConfig + computeSuggestedCents in payout-config.ts); the default
 // scheme reproduces the original "age in years × $1".
 // Status flow: open → reviewed → paid (or skipped).
+//
+// Weeks are never silently dropped. A parent who forgets to review a week finds
+// that week still waiting the next time they open /review: getWeeklyReview walks
+// back up to MAX_BACKFILL_WEEKS, materializes a cycle for any week that had chore
+// activity but was never finalized, and returns those alongside the current week.
+// Backdated weeks are valued as of the week they cover (the kid's age then, not
+// today's), so a birthday in between doesn't inflate an old week.
 
-import { and, eq, gte, lte, inArray } from 'drizzle-orm';
+import { and, eq, gte, lte } from 'drizzle-orm';
 import { db, schema } from './db';
-import { todayIso, weekStarting, weekEnding, ageOn } from './dates';
+import type { PayoutCycle } from './schema';
+import {
+  todayIso,
+  toIsoDate,
+  weekStarting,
+  weekEnding,
+  addWeeks,
+  weeksFromThrough,
+  ageOn,
+} from './dates';
 import { resolvePayoutConfig, computeSuggestedCents } from './payout-config';
+
+/** How far back an unreviewed week can be recovered. Older weeks are let go. */
+export const MAX_BACKFILL_WEEKS = 8;
 
 export type WeeklyReviewItem = {
   cycleId: string;
@@ -18,6 +37,8 @@ export type WeeklyReviewItem = {
   age: number;
   weekStarting: string;
   weekEnding: string;
+  /** 0 = the week in progress, 1 = last week, ... */
+  weeksAgo: number;
   suggestedAmountCents: number;
   status: 'open' | 'reviewed' | 'paid' | 'skipped';
   actualAmountCents: number | null;
@@ -28,16 +49,25 @@ export type WeeklyReviewItem = {
   missedChoreNames: string[];
 };
 
-/**
- * Get-or-create the current week's payout cycle for each kid in the family,
- * and return the review summary for each.
- */
-export async function getCurrentWeekReview(familyId: string): Promise<WeeklyReviewItem[]> {
-  const today = todayIso();
-  const wkStart = weekStarting(today);
-  const wkEnd = weekEnding(today);
+type FamilyPayoutRow = {
+  payoutMode: 'age' | 'fixed';
+  payoutCentsPerYear: number;
+  payoutBonusCents: number;
+  payoutFixedCents: number;
+};
 
-  const famRows = await db
+type KidRow = {
+  id: string;
+  name: string;
+  birthdate: string | null;
+  payoutOverride: string | null;
+  createdAt: number;
+};
+
+type InstanceRow = { status: string; choreName: string; dueDate: string };
+
+async function loadFamily(familyId: string): Promise<FamilyPayoutRow | undefined> {
+  const rows = await db
     .select({
       payoutMode: schema.families.payoutMode,
       payoutCentsPerYear: schema.families.payoutCentsPerYear,
@@ -47,111 +77,267 @@ export async function getCurrentWeekReview(familyId: string): Promise<WeeklyRevi
     .from(schema.families)
     .where(eq(schema.families.id, familyId))
     .limit(1);
-  const family = famRows[0];
-  if (!family) return [];
+  return rows[0];
+}
 
-  const kids = await db
+async function loadKids(familyId: string): Promise<KidRow[]> {
+  return db
     .select({
       id: schema.persons.id,
       name: schema.persons.name,
       birthdate: schema.persons.birthdate,
       payoutOverride: schema.persons.payoutOverride,
+      createdAt: schema.persons.createdAt,
     })
     .from(schema.persons)
-    .where(and(
-      eq(schema.persons.familyId, familyId),
-      eq(schema.persons.role, 'kid'),
-      eq(schema.persons.active, true),
-    ));
+    .where(
+      and(
+        eq(schema.persons.familyId, familyId),
+        eq(schema.persons.role, 'kid'),
+        eq(schema.persons.active, true)
+      )
+    );
+}
+
+/** The oldest week we'll look back to for this kid: capped by the backfill window
+ *  and by the week the kid was added (no cycles for weeks they didn't exist). */
+function earliestWeekFor(kid: KidRow, currentWeek: string, includePast: boolean): string {
+  if (!includePast) return currentWeek;
+  const windowFloor = addWeeks(currentWeek, -MAX_BACKFILL_WEEKS);
+  const kidFirstWeek = weekStarting(toIsoDate(new Date(kid.createdAt)));
+  return kidFirstWeek > windowFloor ? kidFirstWeek : windowFloor;
+}
+
+function isFinalized(status: string | undefined): boolean {
+  return status === 'paid' || status === 'skipped';
+}
+
+/** Chore instances for a kid over a date range, bucketed by their week anchor. */
+async function instancesByWeek(
+  kidId: string,
+  fromDate: string,
+  toDate: string
+): Promise<Map<string, InstanceRow[]>> {
+  const rows = await db
+    .select({
+      status: schema.choreInstances.status,
+      choreName: schema.chores.name,
+      dueDate: schema.choreInstances.dueDate,
+    })
+    .from(schema.choreInstances)
+    .innerJoin(schema.chores, eq(schema.chores.id, schema.choreInstances.choreId))
+    .where(
+      and(
+        eq(schema.chores.assigneeId, kidId),
+        gte(schema.choreInstances.dueDate, fromDate),
+        lte(schema.choreInstances.dueDate, toDate)
+      )
+    );
+
+  const byWeek = new Map<string, InstanceRow[]>();
+  for (const row of rows) {
+    const wk = weekStarting(row.dueDate);
+    const bucket = byWeek.get(wk);
+    if (bucket) bucket.push(row);
+    else byWeek.set(wk, [row]);
+  }
+  return byWeek;
+}
+
+/** Existing payout cycles for a kid from `fromWeek` onward, keyed by week anchor. */
+async function cyclesByWeek(
+  kidId: string,
+  fromWeek: string
+): Promise<Map<string, PayoutCycle>> {
+  const rows = await db
+    .select()
+    .from(schema.payoutCycles)
+    .where(
+      and(eq(schema.payoutCycles.kidId, kidId), gte(schema.payoutCycles.weekStarting, fromWeek))
+    );
+  return new Map(rows.map((c) => [c.weekStarting, c]));
+}
+
+/**
+ * Weeks this kid still needs reviewed, oldest first, always ending with the
+ * current week. A past week counts as outstanding when its cycle exists and
+ * isn't finalized, or when no cycle was ever created but the week had chore
+ * activity — the case where nobody opened /review at all that week.
+ */
+function outstandingWeeksFor(
+  kid: KidRow,
+  currentWeek: string,
+  cycles: Map<string, PayoutCycle>,
+  instances: Map<string, InstanceRow[]>,
+  includePast: boolean
+): string[] {
+  return weeksFromThrough(earliestWeekFor(kid, currentWeek, includePast), currentWeek).filter((wk) => {
+    if (wk === currentWeek) return true;
+    const cycle = cycles.get(wk);
+    if (cycle) return !isFinalized(cycle.status);
+    // No cycle row: a week the app tracked nothing in isn't a missed review.
+    return (instances.get(wk)?.length ?? 0) > 0;
+  });
+}
+
+/** Get-or-create the cycle for one kid-week, keeping an open suggestion current. */
+async function ensureCycle(
+  kid: KidRow,
+  weekStart: string,
+  suggested: number,
+  existing: PayoutCycle | undefined
+): Promise<PayoutCycle> {
+  if (!existing) {
+    const id = crypto.randomUUID();
+    db.insert(schema.payoutCycles)
+      .values({
+        id,
+        kidId: kid.id,
+        weekStarting: weekStart,
+        status: 'open',
+        suggestedAmountCents: suggested,
+      })
+      .run();
+    return (
+      await db.select().from(schema.payoutCycles).where(eq(schema.payoutCycles.id, id)).limit(1)
+    )[0];
+  }
+  if (existing.suggestedAmountCents !== suggested && existing.status === 'open') {
+    // Birthday bumped age, or the payout scheme changed, while still unreviewed.
+    db.update(schema.payoutCycles)
+      .set({ suggestedAmountCents: suggested })
+      .where(eq(schema.payoutCycles.id, existing.id))
+      .run();
+    return { ...existing, suggestedAmountCents: suggested };
+  }
+  return existing;
+}
+
+function buildItem(
+  kid: KidRow,
+  cycle: PayoutCycle,
+  weekStart: string,
+  age: number,
+  weeksAgo: number,
+  instances: InstanceRow[]
+): WeeklyReviewItem {
+  const confirmedCount = instances.filter((i) => i.status === 'confirmed').length;
+  const pendingCount = instances.filter((i) => i.status === 'pending').length;
+  const disputedCount = instances.filter((i) => i.status === 'disputed').length;
+  const doneCount = instances.filter((i) => i.status === 'done').length;
+
+  return {
+    cycleId: cycle.id,
+    kidId: kid.id,
+    kidName: kid.name,
+    age,
+    weekStarting: weekStart,
+    weekEnding: weekEnding(weekStart),
+    weeksAgo,
+    suggestedAmountCents: cycle.suggestedAmountCents,
+    status: cycle.status,
+    actualAmountCents: cycle.actualAmountCents,
+    // count 'done' (kid did their part) toward responsibility
+    confirmedCount: confirmedCount + doneCount,
+    pendingCount,
+    disputedCount,
+    totalCount: instances.length,
+    // "Missed" for display: pending + disputed (not yet kid-claimed-and-confirmed).
+    missedChoreNames: instances
+      .filter((i) => i.status === 'pending' || i.status === 'disputed')
+      .map((i) => i.choreName),
+  };
+}
+
+/**
+ * The parent's review queue: every week still awaiting a decision for every
+ * active kid, oldest week first, ending with the week in progress. Cycles are
+ * created on demand, so a week nobody opened the app during is recoverable.
+ *
+ * `includePastWeeks: false` restricts it to the week in progress and skips the
+ * backfill entirely — for read paths (the leaderboard summary) that only want
+ * this week and shouldn't be materializing old cycles as a side effect.
+ */
+export async function getWeeklyReview(
+  familyId: string,
+  includePastWeeks = true
+): Promise<WeeklyReviewItem[]> {
+  const today = todayIso();
+  const currentWeek = weekStarting(today);
+  const currentWeekEnd = weekEnding(today);
+
+  const family = await loadFamily(familyId);
+  if (!family) return [];
+  const kids = await loadKids(familyId);
 
   const items: WeeklyReviewItem[] = [];
   for (const kid of kids) {
-    const age = kid.birthdate ? ageOn(kid.birthdate, today) : 0;
-    const suggested = computeSuggestedCents(resolvePayoutConfig(family, kid.payoutOverride), age);
+    const from = earliestWeekFor(kid, currentWeek, includePastWeeks);
+    const [instances, cycles] = await Promise.all([
+      instancesByWeek(kid.id, from, currentWeekEnd),
+      cyclesByWeek(kid.id, from),
+    ]);
 
-    // Get-or-create payout cycle
-    let cycleRows = await db
-      .select()
-      .from(schema.payoutCycles)
-      .where(
-        and(
-          eq(schema.payoutCycles.kidId, kid.id),
-          eq(schema.payoutCycles.weekStarting, wkStart)
-        )
-      )
-      .limit(1);
-    let cycle = cycleRows[0];
-    if (!cycle) {
-      const id = crypto.randomUUID();
-      db.insert(schema.payoutCycles)
-        .values({
-          id,
-          kidId: kid.id,
-          weekStarting: wkStart,
-          status: 'open',
-          suggestedAmountCents: suggested,
-        })
-        .run();
-      cycle = (await db
-        .select()
-        .from(schema.payoutCycles)
-        .where(eq(schema.payoutCycles.id, id))
-        .limit(1))[0];
-    } else if (cycle.suggestedAmountCents !== suggested && cycle.status === 'open') {
-      // Birthday bumped age mid-week; refresh suggestion.
-      db.update(schema.payoutCycles)
-        .set({ suggestedAmountCents: suggested })
-        .where(eq(schema.payoutCycles.id, cycle.id))
-        .run();
-      cycle.suggestedAmountCents = suggested;
-    }
-
-    // Count this week's instances by status.
-    const instances = await db
-      .select({
-        id: schema.choreInstances.id,
-        status: schema.choreInstances.status,
-        choreName: schema.chores.name,
-      })
-      .from(schema.choreInstances)
-      .innerJoin(schema.chores, eq(schema.chores.id, schema.choreInstances.choreId))
-      .where(
-        and(
-          eq(schema.chores.assigneeId, kid.id),
-          gte(schema.choreInstances.dueDate, wkStart),
-          lte(schema.choreInstances.dueDate, wkEnd)
-        )
+    for (const weekStart of outstandingWeeksFor(
+      kid,
+      currentWeek,
+      cycles,
+      instances,
+      includePastWeeks
+    )) {
+      const wkEnd = weekEnding(weekStart);
+      // Value a past week as of the week it covers, not as of today.
+      const asOf = wkEnd < today ? wkEnd : today;
+      const age = kid.birthdate ? ageOn(kid.birthdate, asOf) : 0;
+      const suggested = computeSuggestedCents(
+        resolvePayoutConfig(family, kid.payoutOverride),
+        age
       );
-
-    const confirmedCount = instances.filter((i) => i.status === 'confirmed').length;
-    const pendingCount = instances.filter((i) => i.status === 'pending').length;
-    const disputedCount = instances.filter((i) => i.status === 'disputed').length;
-    const doneCount = instances.filter((i) => i.status === 'done').length;
-
-    // "Missed" for display: pending + disputed (not yet kid-claimed-and-confirmed).
-    const missedChoreNames = instances
-      .filter((i) => i.status === 'pending' || i.status === 'disputed')
-      .map((i) => i.choreName);
-
-    items.push({
-      cycleId: cycle.id,
-      kidId: kid.id,
-      kidName: kid.name,
-      age,
-      weekStarting: wkStart,
-      weekEnding: wkEnd,
-      suggestedAmountCents: cycle.suggestedAmountCents,
-      status: cycle.status,
-      actualAmountCents: cycle.actualAmountCents,
-      confirmedCount: confirmedCount + doneCount, // count 'done' (kid did their part) toward responsibility
-      pendingCount,
-      disputedCount,
-      totalCount: instances.length,
-      missedChoreNames,
-    });
+      const cycle = await ensureCycle(kid, weekStart, suggested, cycles.get(weekStart));
+      const weeksAgo = weeksFromThrough(weekStart, currentWeek).length - 1;
+      items.push(
+        buildItem(kid, cycle, weekStart, age, weeksAgo, instances.get(weekStart) ?? [])
+      );
+    }
   }
 
-  return items;
+  // Oldest week first so the forgotten weeks are dealt with before this one;
+  // kids stay grouped in roster order within a week.
+  return items.sort((a, b) => b.weeksAgo - a.weeksAgo);
+}
+
+/**
+ * Get-or-create the current week's payout cycle for each kid in the family,
+ * and return the review summary for each. Earlier unreviewed weeks are ignored
+ * here — use getWeeklyReview for the parent's actual queue.
+ */
+export async function getCurrentWeekReview(familyId: string): Promise<WeeklyReviewItem[]> {
+  return getWeeklyReview(familyId, false);
+}
+
+/**
+ * How many *earlier* weeks still need a decision somewhere in this family —
+ * the nudge count for the dashboard and the reminder push. Read-only: unlike
+ * getWeeklyReview it creates nothing.
+ */
+export async function countMissedWeeks(familyId: string): Promise<number> {
+  const today = todayIso();
+  const currentWeek = weekStarting(today);
+  const currentWeekEnd = weekEnding(today);
+  const kids = await loadKids(familyId);
+
+  const weeks = new Set<string>();
+  for (const kid of kids) {
+    const from = earliestWeekFor(kid, currentWeek, true);
+    const [instances, cycles] = await Promise.all([
+      instancesByWeek(kid.id, from, currentWeekEnd),
+      cyclesByWeek(kid.id, from),
+    ]);
+    for (const wk of outstandingWeeksFor(kid, currentWeek, cycles, instances, true)) {
+      if (wk !== currentWeek) weeks.add(wk);
+    }
+  }
+  return weeks.size;
 }
 
 /** Approve a payout: marks cycle as paid + creates a ledger credit. */
@@ -187,7 +373,8 @@ export async function approvePayout(
     .where(eq(schema.payoutCycles.id, cycleId))
     .run();
 
-  // Ledger entry
+  // Ledger entry. The description names the week, not "this week", so a
+  // late-approved week reads correctly in the kid's history.
   if (amountCents > 0) {
     db.insert(schema.ledgerEntries)
       .values({

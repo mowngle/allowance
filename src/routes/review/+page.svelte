@@ -7,6 +7,40 @@
     return `$${(cents / 100).toFixed(2)}`;
   }
 
+  function shortDate(iso: string): string {
+    const [y, m, d] = iso.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+    });
+  }
+
+  function weekRange(item: { weekStarting: string; weekEnding: string }): string {
+    return `${shortDate(item.weekStarting)} – ${shortDate(item.weekEnding)}`;
+  }
+
+  function weekLabel(weeksAgo: number): string {
+    if (weeksAgo === 0) return 'This week';
+    if (weeksAgo === 1) return 'Last week';
+    return `${weeksAgo} weeks ago`;
+  }
+
+  // Items arrive oldest week first. Tag the row that opens each section so the
+  // forgotten weeks get their own heading above the week in progress.
+  $: rows = data.items.map((item, i) => ({
+    item,
+    heading:
+      i === 0 || (data.items[i - 1].weeksAgo === 0) !== (item.weeksAgo === 0)
+        ? item.weeksAgo > 0
+          ? 'Earlier weeks — never reviewed'
+          : 'This week'
+        : null,
+  }));
+
+  $: missedWeeks = new Set(
+    data.items.filter((i) => i.weeksAgo > 0).map((i) => i.weekStarting)
+  ).size;
+
   // Per-cycle: are we showing the "adjust amount" inline editor?
   let adjustingId: string | null = null;
   // Per-cycle: the current adjusted amount in dollars (string for input binding).
@@ -36,18 +70,37 @@
   <a href="/" class="text-sm text-slate-500 hover:text-slate-800 underline">← Home</a>
 </header>
 
+{#if missedWeeks > 0}
+  <div class="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+    <div class="font-medium">
+      {missedWeeks} earlier week{missedWeeks === 1 ? '' : 's'} still needs a decision.
+    </div>
+    <p class="mt-1 text-amber-800">
+      Nothing was paid for {missedWeeks === 1 ? 'it' : 'them'} yet. Approve to pay it now — it
+      lands in the kid's history labelled with the week it covers — or skip it to close it out.
+    </p>
+  </div>
+{/if}
+
 {#if data.items.length === 0}
   <p class="mt-6 text-slate-500">No kids set up yet.</p>
 {/if}
 
 <div class="mt-6 space-y-4">
-  {#each data.items as item (item.cycleId)}
-    <article class="rounded-xl border border-slate-200 bg-white p-4">
+  {#each rows as { item, heading } (item.cycleId)}
+    {#if heading}
+      <h2 class="pt-2 text-xs uppercase tracking-wide text-slate-500 font-medium">{heading}</h2>
+    {/if}
+    <article
+      class="rounded-xl border bg-white p-4 {item.weeksAgo > 0
+        ? 'border-amber-300'
+        : 'border-slate-200'}"
+    >
       <header class="flex items-center justify-between">
         <div>
           <div class="font-medium text-lg">{item.kidName}</div>
           <div class="text-xs text-slate-500">
-            Age {item.age} · Week of {item.weekStarting}
+            Age {item.age} · {weekLabel(item.weeksAgo)} · {weekRange(item)}
           </div>
         </div>
         {#if item.status === 'paid'}
@@ -58,13 +111,19 @@
           <span class="rounded-full bg-slate-200 text-slate-700 text-xs font-medium px-3 py-1">
             Skipped
           </span>
+        {:else if item.weeksAgo > 0}
+          <span class="rounded-full bg-amber-100 text-amber-800 text-xs font-medium px-3 py-1">
+            Overdue
+          </span>
         {/if}
       </header>
 
       <!-- Progress summary -->
       <div class="mt-3 text-sm">
         <span class="font-medium">{item.confirmedCount} of {item.totalCount}</span>
-        <span class="text-slate-500"> chores this week</span>
+        <span class="text-slate-500">
+          chores {item.weeksAgo > 0 ? 'that week' : 'this week'}
+        </span>
         {#if item.missedChoreNames.length > 0 && item.status === 'open'}
           <div class="mt-1 text-xs text-amber-700">
             Missed: {item.missedChoreNames.join(', ')}

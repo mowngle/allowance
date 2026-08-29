@@ -10,6 +10,10 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
   },
   resolve: {
-    alias: { $lib: resolve('./src/lib') },
+    alias: {
+      $lib: resolve('./src/lib'),
+      // SvelteKit only generates this module during a build; stub it for tests.
+      '$env/dynamic/private': resolve('./src/lib/server/test/env-dynamic-private.ts'),
+    },
   },
 });

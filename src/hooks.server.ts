@@ -6,12 +6,14 @@ import { scheduleNightlyBackup } from '$lib/server/backup';
 import { ensureSecrets } from '$lib/server/bootstrap';
 import { scheduleNightlySummaryPush } from '$lib/server/scoreboard-sync';
 import { startMdnsAdvertisement } from '$lib/server/mdns';
+import { scheduleReviewReminder } from '$lib/server/review-reminder';
 
 // Boot-time work — runs once on first request.
 ensureSecrets();
 scheduleNightlyBackup();
 scheduleNightlySummaryPush();
 startMdnsAdvertisement();
+scheduleReviewReminder();
 
 export const handle: Handle = async ({ event, resolve }) => {
   const cookie = event.cookies.get(COOKIE_NAME);

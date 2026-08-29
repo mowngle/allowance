@@ -1,15 +1,17 @@
-// /review — parent-only. Sunday review: per-kid weekly summary + approve/skip.
+// /review — parent-only. Weekly review: per-kid weekly summary + approve/skip.
+// Shows any earlier week the parent never finalized, oldest first, before the
+// week in progress — a forgotten week stays payable rather than vanishing.
 
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect, error } from '@sveltejs/kit';
-import { getCurrentWeekReview, approvePayout, skipPayout } from '$lib/server/payouts';
+import { getWeeklyReview, approvePayout, skipPayout } from '$lib/server/payouts';
 import { requireFreshPin } from '$lib/server/pinGuard';
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.session) throw redirect(303, '/claim');
   if (locals.session.role !== 'parent') throw error(403, 'Parents only');
   await requireFreshPin(locals.session, '/review');
-  const items = await getCurrentWeekReview(locals.session.familyId);
+  const items = await getWeeklyReview(locals.session.familyId);
   return { items };
 };
 

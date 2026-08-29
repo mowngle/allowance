@@ -17,6 +17,7 @@ import {
   disputeApproval,
   getBalanceCents,
 } from '$lib/server/family';
+import { countMissedWeeks } from '$lib/server/payouts';
 import { requireFreshPin } from '$lib/server/pinGuard';
 import { sendToFamilyParents } from '$lib/server/push';
 import { db, schema } from '$lib/server/db';
@@ -33,16 +34,19 @@ export const load: PageServerLoad = async ({ locals }) => {
       getWeekProgress(session.personId),
       getBalanceCents(session.personId),
     ]);
-    return { chores, progress, balanceCents, kids: null, pending: null };
+    return { chores, progress, balanceCents, kids: null, pending: null, missedWeeks: 0 };
   }
 
   // Parent dashboard
   await requireFreshPin(session, '/');
-  const [kids, pending] = await Promise.all([
+  const [kids, pending, missedWeeks] = await Promise.all([
     getKidSummaries(session.familyId),
     getPendingApprovals(session.familyId),
+    // Earlier weeks nobody ever approved or skipped — surfaced here so a
+    // forgotten review isn't only discoverable by opening /review.
+    countMissedWeeks(session.familyId),
   ]);
-  return { chores: null, progress: null, kids, pending };
+  return { chores: null, progress: null, kids, pending, missedWeeks };
 };
 
 async function notifyChoreDone(familyId: string, kidName: string): Promise<void> {

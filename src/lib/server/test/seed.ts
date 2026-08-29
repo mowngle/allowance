@@ -6,10 +6,15 @@ export function seedFamily(name = 'Test Fam'): string {
   return id;
 }
 
-export function seedKid(familyId: string, name: string, birthdate = '2016-01-01'): string {
+export function seedKid(
+  familyId: string,
+  name: string,
+  birthdate = '2016-01-01',
+  createdAt = Date.now()
+): string {
   const id = crypto.randomUUID();
   db.insert(schema.persons)
-    .values({ id, familyId, name, role: 'kid', birthdate, createdAt: Date.now() })
+    .values({ id, familyId, name, role: 'kid', birthdate, createdAt })
     .run();
   return id;
 }
@@ -40,6 +45,19 @@ export function seedInstance(
   const id = crypto.randomUUID();
   db.insert(schema.choreInstances)
     .values({ id, choreId, dueDate, status, markedDoneAt: markedDoneAt ?? undefined })
+    .run();
+  return id;
+}
+
+export function seedCycle(
+  kidId: string,
+  weekStarting: string,
+  status: 'open' | 'reviewed' | 'paid' | 'skipped',
+  suggestedAmountCents = 500
+): string {
+  const id = crypto.randomUUID();
+  db.insert(schema.payoutCycles)
+    .values({ id, kidId, weekStarting, status, suggestedAmountCents })
     .run();
   return id;
 }
