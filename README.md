@@ -11,7 +11,7 @@ the only thing ever shared between homes.
 - **Weekly review** with **configurable payouts** — a fixed amount, or age × rate + bonus,
   set per family with optional per-kid overrides. Forget a week and it isn't lost: earlier
   unreviewed weeks stay in the queue (valued at the kid's age *that* week), and parents get a
-  daily nudge until each one is approved or skipped
+  reminder push once, on the family's configured payout day, if anything is still outstanding
 - **Append-only ledger** with kid-visible debit descriptions; a kid's balance is the sum of
   their entries
 - **Parent PIN** gating approvals and money actions; **web push** to parent phones
