@@ -3,6 +3,7 @@ import { db, schema } from '$lib/server/db';
 import { eq } from 'drizzle-orm';
 import { seedFamily, seedKid, seedCycle } from '$lib/server/test/seed';
 import { missedWeeksPayload, remindMissedReviews } from '$lib/server/review-reminder';
+import { countOutstandingWeeks } from '$lib/server/payouts';
 import { todayIso, weekStarting, addWeeks, parseIsoDate, toIsoDate } from '$lib/server/dates';
 
 const thisWeek = weekStarting(todayIso());
@@ -91,5 +92,38 @@ describe('remindMissedReviews', () => {
     const famB = seedFamily('Two');
     seedKidJoined(famB, 'Gus', 1);
     expect(await remindMissedReviews(isoForWeekday(0))).toBe(2);
+  });
+});
+
+// countOutstandingWeeks accumulates into one Set<string> shared across every
+// kid in the family, but the "skip the current week" guard is evaluated
+// per-kid (isFinalized(cycles.get(wk)?.status) looks only at that kid's own
+// cycle). These pin the family-level result of that per-kid guard feeding a
+// shared, family-level Set.
+describe('countOutstandingWeeks (multi-kid current-week aggregation)', () => {
+  it('counts the current week once when both kids have it open, not once per kid', async () => {
+    const fam = seedFamily();
+    seedKidJoined(fam, 'Hana', 0);
+    seedKidJoined(fam, 'Ivo', 0);
+    expect(await countOutstandingWeeks(fam)).toBe(1);
+  });
+
+  it('still counts the current week when one kid is finalized but the sibling is not', async () => {
+    const fam = seedFamily();
+    const a = seedKidJoined(fam, 'Jay', 0);
+    seedKidJoined(fam, 'Kira', 0);
+    seedCycle(a, thisWeek, 'paid');
+    // Jay's own current-week cycle is finalized, but Kira's is still open —
+    // the family still owes a decision for this week.
+    expect(await countOutstandingWeeks(fam)).toBe(1);
+  });
+
+  it('is zero once both kids’ current weeks are finalized with no earlier weeks owed', async () => {
+    const fam = seedFamily();
+    const a = seedKidJoined(fam, 'Leo', 0);
+    const b = seedKidJoined(fam, 'Mimi', 0);
+    seedCycle(a, thisWeek, 'paid');
+    seedCycle(b, thisWeek, 'skipped');
+    expect(await countOutstandingWeeks(fam)).toBe(0);
   });
 });
