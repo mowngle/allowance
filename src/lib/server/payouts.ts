@@ -172,12 +172,15 @@ function outstandingWeeksFor(
   );
 }
 
-/** Get-or-create the cycle for one kid-week, keeping an open suggestion current. */
+/** Get-or-create the cycle for one kid-week. Only the week in progress has its
+ *  suggestion refreshed — a past week's amount is history, and recomputing it
+ *  would let a payout-scheme change silently revalue weeks already lived. */
 async function ensureCycle(
   kid: KidRow,
   weekStart: string,
   suggested: number,
-  existing: PayoutCycle | undefined
+  existing: PayoutCycle | undefined,
+  isCurrentWeek: boolean
 ): Promise<PayoutCycle> {
   if (!existing) {
     const id = crypto.randomUUID();
@@ -194,8 +197,8 @@ async function ensureCycle(
       await db.select().from(schema.payoutCycles).where(eq(schema.payoutCycles.id, id)).limit(1)
     )[0];
   }
-  if (existing.suggestedAmountCents !== suggested && existing.status === 'open') {
-    // Birthday bumped age, or the payout scheme changed, while still unreviewed.
+  if (isCurrentWeek && existing.status === 'open' && existing.suggestedAmountCents !== suggested) {
+    // Birthday bumped age while the week is still in progress.
     db.update(schema.payoutCycles)
       .set({ suggestedAmountCents: suggested })
       .where(eq(schema.payoutCycles.id, existing.id))
@@ -279,7 +282,13 @@ export async function getWeeklyReview(
         resolvePayoutConfig(family, kid.payoutOverride),
         age
       );
-      const cycle = await ensureCycle(kid, weekStart, suggested, cycles.get(weekStart));
+      const cycle = await ensureCycle(
+        kid,
+        weekStart,
+        suggested,
+        cycles.get(weekStart),
+        weekStart === currentWeek
+      );
       const weeksAgo = weeksFromThrough(weekStart, currentWeek).length - 1;
       items.push(
         buildItem(kid, cycle, weekStart, age, weeksAgo, instances.get(weekStart) ?? [])

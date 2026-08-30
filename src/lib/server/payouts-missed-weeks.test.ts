@@ -138,7 +138,6 @@ describe('backdated valuation', () => {
     const [y, m, d] = thisWeek.split('-');
     const birthdate = `${Number(y) - 16}-${m}-${d}`;
     const kid = seedKidJoined(fam, 'Jae', 1, birthdate);
-    seedCycle(kid, lastWeek, 'open');
 
     const items = await getWeeklyReview(fam);
     const past = items.find((i) => i.weekStarting === lastWeek)!;
@@ -149,20 +148,34 @@ describe('backdated valuation', () => {
     expect(current.suggestedAmountCents).toBe(1600);
   });
 
-  it('rewrites a stale suggestion stored on a still-open past cycle', async () => {
+  it('leaves a past week’s stored suggestion alone', async () => {
     const fam = seedFamily();
     const kid = seedKidJoined(fam, 'Kit', 1, '2014-01-01');
-    seedCycle(kid, lastWeek, 'open', 1); // nonsense stored amount
+    seedCycle(kid, lastWeek, 'open', 777); // whatever it was worth then
+
     const items = await getWeeklyReview(fam);
     const past = items.find((i) => i.weekStarting === lastWeek)!;
-    expect(past.suggestedAmountCents).toBeGreaterThan(1);
+    // A past week is history: its amount is frozen once written, so changing
+    // the family's payout scheme can't retroactively revalue it.
+    expect(past.suggestedAmountCents).toBe(777);
+
     const stored = (
       await db
         .select()
         .from(schema.payoutCycles)
         .where(eq(schema.payoutCycles.id, past.cycleId))
     )[0];
-    expect(stored.suggestedAmountCents).toBe(past.suggestedAmountCents);
+    expect(stored.suggestedAmountCents).toBe(777);
+  });
+
+  it('still refreshes the current week when a birthday lands mid-week', async () => {
+    const fam = seedFamily();
+    const kid = seedKidJoined(fam, 'Kip', 0, '2014-01-01');
+    seedCycle(kid, thisWeek, 'open', 1); // nonsense stored amount
+
+    const items = await getWeeklyReview(fam);
+    const current = items.find((i) => i.weekStarting === thisWeek)!;
+    expect(current.suggestedAmountCents).toBeGreaterThan(1);
   });
 
   it('counts only that week’s chores against a past week', async () => {
