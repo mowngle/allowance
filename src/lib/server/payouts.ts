@@ -166,18 +166,32 @@ async function ensureCycle(
   isCurrentWeek: boolean
 ): Promise<PayoutCycle> {
   if (!existing) {
-    const id = crypto.randomUUID();
+    // Two overlapping requests can both see no existing cycle and both insert
+    // for the same (kidId, weekStarting) — onConflictDoNothing lets the loser's
+    // insert become a no-op instead of throwing the UNIQUE constraint. Because
+    // the loser's generated id was never written on conflict, the row is
+    // re-selected by (kidId, weekStarting) rather than by that id.
     db.insert(schema.payoutCycles)
       .values({
-        id,
+        id: crypto.randomUUID(),
         kidId: kid.id,
         weekStarting: weekStart,
         status: 'open',
         suggestedAmountCents: suggested,
       })
+      .onConflictDoNothing()
       .run();
     return (
-      await db.select().from(schema.payoutCycles).where(eq(schema.payoutCycles.id, id)).limit(1)
+      await db
+        .select()
+        .from(schema.payoutCycles)
+        .where(
+          and(
+            eq(schema.payoutCycles.kidId, kid.id),
+            eq(schema.payoutCycles.weekStarting, weekStart)
+          )
+        )
+        .limit(1)
     )[0];
   }
   if (isCurrentWeek && existing.status === 'open' && existing.suggestedAmountCents !== suggested) {

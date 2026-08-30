@@ -131,6 +131,26 @@ describe('unreviewed earlier weeks', () => {
   });
 });
 
+describe('concurrent review loads', () => {
+  it('two overlapping getWeeklyReview calls both resolve with no duplicate cycles', async () => {
+    const fam = seedFamily();
+    seedKidJoined(fam, 'Uma', 5);
+
+    const results = await Promise.allSettled([getWeeklyReview(fam), getWeeklyReview(fam)]);
+    expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
+
+    const cycles = await db.select().from(schema.payoutCycles);
+    const seen = new Set<string>();
+    for (const c of cycles) {
+      const key = `${c.kidId}:${c.weekStarting}`;
+      expect(seen.has(key)).toBe(false);
+      seen.add(key);
+    }
+    // Six weeks (5 back-filled + this week) materialized exactly once each.
+    expect(cycles).toHaveLength(6);
+  });
+});
+
 describe('backdated valuation', () => {
   it('values a past week at the age the kid was that week, not today', async () => {
     const fam = seedFamily();
