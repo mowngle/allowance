@@ -382,7 +382,17 @@ export async function countOutstandingWeeks(familyId: string): Promise<number> {
   return weeks.size;
 }
 
-/** Approve a payout: marks cycle as paid + creates a ledger credit. */
+/**
+ * Approve a payout: marks cycle as paid + creates a ledger credit.
+ *
+ * Runs in a transaction with the status re-read inside it — a double-tap on a
+ * slow LAN, or both parents approving the same card after the reminder push,
+ * are ordinary. Without this, two concurrent calls both see 'open' and both
+ * pay the week. Mirrors approvePayoutBatch's transaction pattern, except the
+ * single-cycle form throws instead of silently skipping: its id comes from a
+ * trusted page load, so a re-finalize attempt is either a race or a bug, not
+ * a stale-page resubmit.
+ */
 export async function approvePayout(
   parentPersonId: string,
   cycleId: string,
@@ -391,76 +401,88 @@ export async function approvePayout(
 ): Promise<void> {
   if (amountCents < 0) throw new Error('Amount must be non-negative');
 
-  const rows = await db
-    .select()
-    .from(schema.payoutCycles)
-    .where(eq(schema.payoutCycles.id, cycleId))
-    .limit(1);
-  const cycle = rows[0];
-  if (!cycle) throw new Error('Cycle not found');
-  if (cycle.status === 'paid' || cycle.status === 'skipped') {
-    throw new Error('Cycle already finalized');
-  }
-
   const now = Date.now();
-  // Mark cycle paid
-  db.update(schema.payoutCycles)
-    .set({
-      status: 'paid',
-      actualAmountCents: amountCents,
-      reviewedAt: now,
-      reviewedBy: parentPersonId,
-      note: note ?? null,
-    })
-    .where(eq(schema.payoutCycles.id, cycleId))
-    .run();
 
-  // Ledger entry. The description names the week, not "this week", so a
-  // late-approved week reads correctly in the kid's history.
-  if (amountCents > 0) {
-    db.insert(schema.ledgerEntries)
-      .values({
-        id: crypto.randomUUID(),
-        kidId: cycle.kidId,
-        kind: 'payout',
-        amountCents,
-        description: note?.trim() || `Weekly allowance (week of ${cycle.weekStarting})`,
-        visibleToKid: true,
-        createdAt: now,
-        createdBy: parentPersonId,
-        relatedPayoutCycleId: cycleId,
+  // better-sqlite3 transactions are synchronous — no await inside this callback.
+  db.transaction((tx) => {
+    const cycle = tx
+      .select()
+      .from(schema.payoutCycles)
+      .where(eq(schema.payoutCycles.id, cycleId))
+      .limit(1)
+      .all()[0];
+    if (!cycle) throw new Error('Cycle not found');
+    if (cycle.status === 'paid' || cycle.status === 'skipped') {
+      throw new Error('Cycle already finalized');
+    }
+
+    tx.update(schema.payoutCycles)
+      .set({
+        status: 'paid',
+        actualAmountCents: amountCents,
+        reviewedAt: now,
+        reviewedBy: parentPersonId,
+        note: note ?? null,
       })
+      .where(eq(schema.payoutCycles.id, cycleId))
       .run();
-  }
+
+    // Ledger entry. The description names the week, not "this week", so a
+    // late-approved week reads correctly in the kid's history.
+    if (amountCents > 0) {
+      tx.insert(schema.ledgerEntries)
+        .values({
+          id: crypto.randomUUID(),
+          kidId: cycle.kidId,
+          kind: 'payout',
+          amountCents,
+          description: note?.trim() || `Weekly allowance (week of ${cycle.weekStarting})`,
+          visibleToKid: true,
+          createdAt: now,
+          createdBy: parentPersonId,
+          relatedPayoutCycleId: cycleId,
+        })
+        .run();
+    }
+  });
 }
 
-/** Skip a week: marks cycle as skipped, no ledger entry. */
+/**
+ * Skip a week: marks cycle as skipped, no ledger entry.
+ *
+ * Same transactional re-read as approvePayout, for the same double-tap /
+ * both-parents-at-once reason.
+ */
 export async function skipPayout(
   parentPersonId: string,
   cycleId: string,
   note?: string
 ): Promise<void> {
-  const rows = await db
-    .select()
-    .from(schema.payoutCycles)
-    .where(eq(schema.payoutCycles.id, cycleId))
-    .limit(1);
-  const cycle = rows[0];
-  if (!cycle) throw new Error('Cycle not found');
-  if (cycle.status === 'paid' || cycle.status === 'skipped') {
-    throw new Error('Cycle already finalized');
-  }
+  const now = Date.now();
 
-  db.update(schema.payoutCycles)
-    .set({
-      status: 'skipped',
-      actualAmountCents: 0,
-      reviewedAt: Date.now(),
-      reviewedBy: parentPersonId,
-      note: note ?? null,
-    })
-    .where(eq(schema.payoutCycles.id, cycleId))
-    .run();
+  db.transaction((tx) => {
+    const cycle = tx
+      .select()
+      .from(schema.payoutCycles)
+      .where(eq(schema.payoutCycles.id, cycleId))
+      .limit(1)
+      .all()[0];
+    if (!cycle) throw new Error('Cycle not found');
+    if (cycle.status === 'paid' || cycle.status === 'skipped') {
+      throw new Error('Cycle already finalized');
+    }
+
+    tx.update(schema.payoutCycles)
+      .set({
+        status: 'skipped',
+        actualAmountCents: 0,
+        reviewedAt: now,
+        reviewedBy: parentPersonId,
+        note: note ?? null,
+      })
+      .where(eq(schema.payoutCycles.id, cycleId))
+      .run();
+  });
 }
 
 /**

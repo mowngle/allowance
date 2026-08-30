@@ -131,6 +131,57 @@ describe('unreviewed earlier weeks', () => {
   });
 });
 
+describe('concurrent single-cycle finalization', () => {
+  it('two concurrent approvePayout calls on one cycle produce exactly one ledger entry', async () => {
+    const fam = seedFamily();
+    const parent = crypto.randomUUID();
+    db.insert(schema.persons)
+      .values({ id: parent, familyId: fam, name: 'P', role: 'parent', createdAt: Date.now() })
+      .run();
+    const kid = seedKidJoined(fam, 'Vik', 0);
+    const cycleId = seedCycle(kid, thisWeek, 'open', 800);
+
+    const results = await Promise.allSettled([
+      approvePayout(parent, cycleId, 800),
+      approvePayout(parent, cycleId, 800),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((r) => r.status === 'rejected');
+    expect((rejected as PromiseRejectedResult).reason.message).toBe('Cycle already finalized');
+
+    const entries = await db
+      .select()
+      .from(schema.ledgerEntries)
+      .where(eq(schema.ledgerEntries.kidId, kid));
+    expect(entries).toHaveLength(1);
+    expect(entries[0].amountCents).toBe(800);
+  });
+
+  it('two concurrent skipPayout calls on one cycle skip it exactly once', async () => {
+    const fam = seedFamily();
+    const parent = crypto.randomUUID();
+    db.insert(schema.persons)
+      .values({ id: parent, familyId: fam, name: 'P', role: 'parent', createdAt: Date.now() })
+      .run();
+    const kid = seedKidJoined(fam, 'Wren', 0);
+    const cycleId = seedCycle(kid, thisWeek, 'open', 800);
+
+    const results = await Promise.allSettled([
+      skipPayout(parent, cycleId),
+      skipPayout(parent, cycleId),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((r) => r.status === 'rejected');
+    expect((rejected as PromiseRejectedResult).reason.message).toBe('Cycle already finalized');
+
+    const cycle = (
+      await db.select().from(schema.payoutCycles).where(eq(schema.payoutCycles.id, cycleId))
+    )[0];
+    expect(cycle.status).toBe('skipped');
+    expect(await db.select().from(schema.ledgerEntries)).toHaveLength(0);
+  });
+});
+
 describe('concurrent review loads', () => {
   it('two overlapping getWeeklyReview calls both resolve with no duplicate cycles', async () => {
     const fam = seedFamily();
