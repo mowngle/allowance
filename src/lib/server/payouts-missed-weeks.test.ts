@@ -150,7 +150,10 @@ describe('backdated valuation', () => {
 
   it('leaves a past week’s stored suggestion alone', async () => {
     const fam = seedFamily();
-    const kid = seedKidJoined(fam, 'Kit', 1, '2014-01-01');
+    // Birthday lands on this week's Monday, so last week they were a year younger.
+    const [y, m, d] = thisWeek.split('-');
+    const birthdate = `${Number(y) - 14}-${m}-${d}`;
+    const kid = seedKidJoined(fam, 'Kit', 1, birthdate);
     seedCycle(kid, lastWeek, 'open', 777); // whatever it was worth then
 
     const items = await getWeeklyReview(fam);
@@ -158,6 +161,8 @@ describe('backdated valuation', () => {
     // A past week is history: its amount is frozen once written, so changing
     // the family's payout scheme can't retroactively revalue it.
     expect(past.suggestedAmountCents).toBe(777);
+    // The age, unlike the amount, is always recomputed for the week it describes.
+    expect(past.age).toBe(13);
 
     const stored = (
       await db
