@@ -5,7 +5,6 @@ import { todayIso, weekStarting, addWeeks } from '$lib/server/dates';
 
 const thisWeek = weekStarting(todayIso());
 const lastWeek = addWeeks(thisWeek, -1);
-const MONTHS_AGO = Date.now() - 120 * 24 * 60 * 60 * 1000;
 
 describe('missedWeeksPayload', () => {
   it('reads as a single week', () => {
@@ -24,18 +23,19 @@ describe('missedWeeksPayload', () => {
 describe('remindMissedReviews', () => {
   it('nudges only families with an unreviewed earlier week', async () => {
     const behind = seedFamily('Behind');
-    const kid = seedKid(behind, 'Ana', '2016-01-01', MONTHS_AGO);
+    const joined = new Date(`${lastWeek}T12:00:00`).getTime();
+    const kid = seedKid(behind, 'Ana', '2016-01-01', joined);
     seedCycle(kid, lastWeek, 'open');
 
     const uptodate = seedFamily('Up to date');
-    seedKid(uptodate, 'Bo', '2016-01-01', MONTHS_AGO);
+    seedKid(uptodate, 'Bo', '2016-01-01', Date.now());
 
     expect(await remindMissedReviews()).toBe(1);
   });
 
   it('stays quiet when nothing is overdue', async () => {
     const fam = seedFamily();
-    seedKid(fam, 'Cy', '2016-01-01', MONTHS_AGO);
+    seedKid(fam, 'Cy', '2016-01-01', Date.now());
     expect(await remindMissedReviews()).toBe(0);
   });
 });

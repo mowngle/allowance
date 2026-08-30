@@ -11,7 +11,6 @@ import {
   countMissedWeeks,
   approvePayout,
   skipPayout,
-  MAX_BACKFILL_WEEKS,
 } from '$lib/server/payouts';
 import { todayIso, weekStarting, weekEnding, addWeeks, addDays } from '$lib/server/dates';
 
@@ -19,17 +18,22 @@ const today = todayIso();
 const thisWeek = weekStarting(today);
 const lastWeek = addWeeks(thisWeek, -1);
 const twoWeeksAgo = addWeeks(thisWeek, -2);
-const MONTHS_AGO = Date.now() - 120 * 24 * 60 * 60 * 1000;
 
-/** A kid old enough that the backfill window, not their join date, is the limit. */
-function seedOldKid(familyId: string, name: string, birthdate = '2016-01-01'): string {
-  return seedKid(familyId, name, birthdate, MONTHS_AGO);
+/** A kid who joined `weeksAgo` weeks ago, so the backfill window is exactly that wide. */
+function seedKidJoined(
+  familyId: string,
+  name: string,
+  weeksAgo: number,
+  birthdate = '2016-01-01'
+): string {
+  const joined = addWeeks(thisWeek, -weeksAgo);
+  return seedKid(familyId, name, birthdate, new Date(`${joined}T12:00:00`).getTime());
 }
 
 describe('unreviewed earlier weeks', () => {
   it('surfaces a past week whose cycle was left open, oldest first', async () => {
     const fam = seedFamily();
-    const kid = seedOldKid(fam, 'Ana');
+    const kid = seedKidJoined(fam, 'Ana', 2);
     seedCycle(kid, lastWeek, 'open');
     seedCycle(kid, twoWeeksAgo, 'open');
 
@@ -40,7 +44,7 @@ describe('unreviewed earlier weeks', () => {
 
   it('backfills a week that has chore activity but no cycle at all', async () => {
     const fam = seedFamily();
-    const kid = seedOldKid(fam, 'Bo');
+    const kid = seedKidJoined(fam, 'Bo', 2);
     const chore = seedChore(fam, kid, 'Dishes');
     seedInstance(chore, addDays(lastWeek, 2), 'confirmed');
 
@@ -60,16 +64,16 @@ describe('unreviewed earlier weeks', () => {
     expect(rows[0].weekStarting).toBe(lastWeek);
   });
 
-  it('ignores a past week the app tracked nothing in', async () => {
+  it('surfaces a past week even when nothing was tracked in it', async () => {
     const fam = seedFamily();
-    seedOldKid(fam, 'Cy');
+    seedKidJoined(fam, 'Cy', 2);
     const items = await getWeeklyReview(fam);
-    expect(items.map((i) => i.weekStarting)).toEqual([thisWeek]);
+    expect(items.map((i) => i.weekStarting)).toEqual([twoWeeksAgo, lastWeek, thisWeek]);
   });
 
   it('drops a past week once it is paid or skipped', async () => {
     const fam = seedFamily();
-    const kid = seedOldKid(fam, 'Dee');
+    const kid = seedKidJoined(fam, 'Dee', 2);
     seedCycle(kid, lastWeek, 'paid');
     seedCycle(kid, twoWeeksAgo, 'skipped');
     const items = await getWeeklyReview(fam);
@@ -78,22 +82,22 @@ describe('unreviewed earlier weeks', () => {
 
   it('keeps a past week that was reviewed but never finalized', async () => {
     const fam = seedFamily();
-    const kid = seedOldKid(fam, 'Eli');
+    const kid = seedKidJoined(fam, 'Eli', 1);
     seedCycle(kid, lastWeek, 'reviewed');
     const items = await getWeeklyReview(fam);
     expect(items.map((i) => i.weekStarting)).toEqual([lastWeek, thisWeek]);
   });
 
-  it('stops at the backfill window', async () => {
+  it('recovers a week far older than the eight-week window used to allow', async () => {
     const fam = seedFamily();
-    const kid = seedOldKid(fam, 'Fay');
-    const tooOld = addWeeks(thisWeek, -(MAX_BACKFILL_WEEKS + 2));
-    const justInside = addWeeks(thisWeek, -MAX_BACKFILL_WEEKS);
-    seedCycle(kid, tooOld, 'open');
-    seedCycle(kid, justInside, 'open');
+    const kid = seedKidJoined(fam, 'Fay', 12);
+    const longAgo = addWeeks(thisWeek, -11);
+    seedCycle(kid, longAgo, 'open');
 
     const items = await getWeeklyReview(fam);
-    expect(items.map((i) => i.weekStarting)).toEqual([justInside, thisWeek]);
+    expect(items.map((i) => i.weekStarting)).toContain(longAgo);
+    // Every week since they joined is present: 12 weeks ago through this week.
+    expect(items).toHaveLength(13);
   });
 
   it('never looks back past the week the kid was added', async () => {
@@ -104,13 +108,18 @@ describe('unreviewed earlier weeks', () => {
     seedCycle(kid, addWeeks(thisWeek, -2), 'open');
 
     const items = await getWeeklyReview(fam);
-    expect(items.map((i) => i.weekStarting)).toEqual([addWeeks(thisWeek, -2), thisWeek]);
+    expect(items.map((i) => i.weekStarting)).toEqual([
+      addWeeks(thisWeek, -3),
+      addWeeks(thisWeek, -2),
+      lastWeek,
+      thisWeek,
+    ]);
   });
 
   it('counts each kid-week separately but reports one row per kid per week', async () => {
     const fam = seedFamily();
-    const a = seedOldKid(fam, 'Hana');
-    const b = seedOldKid(fam, 'Ivo');
+    const a = seedKidJoined(fam, 'Hana', 1);
+    const b = seedKidJoined(fam, 'Ivo', 1);
     seedCycle(a, lastWeek, 'open');
     seedCycle(b, lastWeek, 'open');
 
@@ -128,7 +137,7 @@ describe('backdated valuation', () => {
     // Birthday lands on this week's Monday, so last week they were a year younger.
     const [y, m, d] = thisWeek.split('-');
     const birthdate = `${Number(y) - 16}-${m}-${d}`;
-    const kid = seedOldKid(fam, 'Jae', birthdate);
+    const kid = seedKidJoined(fam, 'Jae', 1, birthdate);
     seedCycle(kid, lastWeek, 'open');
 
     const items = await getWeeklyReview(fam);
@@ -142,7 +151,7 @@ describe('backdated valuation', () => {
 
   it('rewrites a stale suggestion stored on a still-open past cycle', async () => {
     const fam = seedFamily();
-    const kid = seedOldKid(fam, 'Kit', '2014-01-01');
+    const kid = seedKidJoined(fam, 'Kit', 1, '2014-01-01');
     seedCycle(kid, lastWeek, 'open', 1); // nonsense stored amount
     const items = await getWeeklyReview(fam);
     const past = items.find((i) => i.weekStarting === lastWeek)!;
@@ -158,7 +167,7 @@ describe('backdated valuation', () => {
 
   it('counts only that week’s chores against a past week', async () => {
     const fam = seedFamily();
-    const kid = seedOldKid(fam, 'Lia');
+    const kid = seedKidJoined(fam, 'Lia', 1);
     const chore = seedChore(fam, kid, 'Trash');
     seedInstance(chore, addDays(lastWeek, 1), 'confirmed');
     seedInstance(chore, addDays(lastWeek, 2), 'pending');
@@ -183,7 +192,7 @@ describe('finalizing a forgotten week', () => {
     db.insert(schema.persons)
       .values({ id: parent, familyId: fam, name: 'P', role: 'parent', createdAt: Date.now() })
       .run();
-    const kid = seedOldKid(fam, 'Mo');
+    const kid = seedKidJoined(fam, 'Mo', 1);
     seedCycle(kid, lastWeek, 'open');
 
     const past = (await getWeeklyReview(fam)).find((i) => i.weekStarting === lastWeek)!;
@@ -208,7 +217,7 @@ describe('finalizing a forgotten week', () => {
     db.insert(schema.persons)
       .values({ id: parent, familyId: fam, name: 'P', role: 'parent', createdAt: Date.now() })
       .run();
-    const kid = seedOldKid(fam, 'Nia');
+    const kid = seedKidJoined(fam, 'Nia', 1);
     seedCycle(kid, lastWeek, 'open');
 
     const past = (await getWeeklyReview(fam)).find((i) => i.weekStarting === lastWeek)!;
@@ -226,8 +235,8 @@ describe('finalizing a forgotten week', () => {
 describe('countMissedWeeks', () => {
   it('counts distinct earlier weeks and ignores the week in progress', async () => {
     const fam = seedFamily();
-    const a = seedOldKid(fam, 'Oz');
-    const b = seedOldKid(fam, 'Pia');
+    const a = seedKidJoined(fam, 'Oz', 2);
+    const b = seedKidJoined(fam, 'Pia', 2);
     seedCycle(a, lastWeek, 'open');
     seedCycle(b, lastWeek, 'open'); // same week, both kids → still one week
     seedCycle(a, twoWeeksAgo, 'open');
@@ -237,13 +246,13 @@ describe('countMissedWeeks', () => {
 
   it('is zero when only the current week is open', async () => {
     const fam = seedFamily();
-    seedOldKid(fam, 'Quin');
+    seedKidJoined(fam, 'Quin', 0);
     expect(await countMissedWeeks(fam)).toBe(0);
   });
 
   it('creates nothing — it only reports', async () => {
     const fam = seedFamily();
-    const kid = seedOldKid(fam, 'Rae');
+    const kid = seedKidJoined(fam, 'Rae', 1);
     const chore = seedChore(fam, kid, 'Beds');
     seedInstance(chore, addDays(lastWeek, 3), 'pending');
 
@@ -256,7 +265,7 @@ describe('countMissedWeeks', () => {
 describe('getCurrentWeekReview', () => {
   it('still returns only the week in progress', async () => {
     const fam = seedFamily();
-    const kid = seedOldKid(fam, 'Sol');
+    const kid = seedKidJoined(fam, 'Sol', 1);
     seedCycle(kid, lastWeek, 'open');
     const items = await getCurrentWeekReview(fam);
     expect(items.map((i) => i.weekStarting)).toEqual([thisWeek]);
@@ -264,7 +273,7 @@ describe('getCurrentWeekReview', () => {
 
   it('does not backfill old cycles as a side effect', async () => {
     const fam = seedFamily();
-    const kid = seedOldKid(fam, 'Tam');
+    const kid = seedKidJoined(fam, 'Tam', 1);
     const chore = seedChore(fam, kid, 'Sweep');
     seedInstance(chore, addDays(lastWeek, 2), 'confirmed');
 

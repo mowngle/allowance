@@ -8,10 +8,12 @@
 //
 // Weeks are never silently dropped. A parent who forgets to review a week finds
 // that week still waiting the next time they open /review: getWeeklyReview walks
-// back up to MAX_BACKFILL_WEEKS, materializes a cycle for any week that had chore
-// activity but was never finalized, and returns those alongside the current week.
-// Backdated weeks are valued as of the week they cover (the kid's age then, not
-// today's), so a birthday in between doesn't inflate an old week.
+// back to the week each kid was added, materializes a cycle for every week that
+// was never finalized, and returns those alongside the current week. There is no
+// cap and no "did anything happen that week" filter — either would re-create the
+// expiry this exists to remove. Backdated weeks are valued as of the week they
+// cover (the kid's age then, not today's), so a birthday in between doesn't
+// inflate an old week.
 
 import { and, eq, gte, lte } from 'drizzle-orm';
 import { db, schema } from './db';
@@ -21,14 +23,10 @@ import {
   toIsoDate,
   weekStarting,
   weekEnding,
-  addWeeks,
   weeksFromThrough,
   ageOn,
 } from './dates';
 import { resolvePayoutConfig, computeSuggestedCents } from './payout-config';
-
-/** How far back an unreviewed week can be recovered. Older weeks are let go. */
-export const MAX_BACKFILL_WEEKS = 8;
 
 export type WeeklyReviewItem = {
   cycleId: string;
@@ -99,13 +97,12 @@ async function loadKids(familyId: string): Promise<KidRow[]> {
     );
 }
 
-/** The oldest week we'll look back to for this kid: capped by the backfill window
- *  and by the week the kid was added (no cycles for weeks they didn't exist). */
+/** The oldest week we look back to for this kid: the week they were added.
+ *  No window cap — a week is owed whether or not anyone opened the app that
+ *  month, so capping it would re-introduce the expiry this feature removes. */
 function earliestWeekFor(kid: KidRow, currentWeek: string, includePast: boolean): string {
   if (!includePast) return currentWeek;
-  const windowFloor = addWeeks(currentWeek, -MAX_BACKFILL_WEEKS);
-  const kidFirstWeek = weekStarting(toIsoDate(new Date(kid.createdAt)));
-  return kidFirstWeek > windowFloor ? kidFirstWeek : windowFloor;
+  return weekStarting(toIsoDate(new Date(kid.createdAt)));
 }
 
 function isFinalized(status: string | undefined): boolean {
@@ -160,24 +157,19 @@ async function cyclesByWeek(
 
 /**
  * Weeks this kid still needs reviewed, oldest first, always ending with the
- * current week. A past week counts as outstanding when its cycle exists and
- * isn't finalized, or when no cycle was ever created but the week had chore
- * activity — the case where nobody opened /review at all that week.
+ * current week. Every week since they joined counts until it's finalized:
+ * allowance here is age-based, only loosely tied to chores, so a quiet stretch
+ * (server off, chores paused, none configured yet) still owes the kid a week.
  */
 function outstandingWeeksFor(
   kid: KidRow,
   currentWeek: string,
   cycles: Map<string, PayoutCycle>,
-  instances: Map<string, InstanceRow[]>,
   includePast: boolean
 ): string[] {
-  return weeksFromThrough(earliestWeekFor(kid, currentWeek, includePast), currentWeek).filter((wk) => {
-    if (wk === currentWeek) return true;
-    const cycle = cycles.get(wk);
-    if (cycle) return !isFinalized(cycle.status);
-    // No cycle row: a week the app tracked nothing in isn't a missed review.
-    return (instances.get(wk)?.length ?? 0) > 0;
-  });
+  return weeksFromThrough(earliestWeekFor(kid, currentWeek, includePast), currentWeek).filter(
+    (wk) => wk === currentWeek || !isFinalized(cycles.get(wk)?.status)
+  );
 }
 
 /** Get-or-create the cycle for one kid-week, keeping an open suggestion current. */
@@ -278,13 +270,7 @@ export async function getWeeklyReview(
       cyclesByWeek(kid.id, from),
     ]);
 
-    for (const weekStart of outstandingWeeksFor(
-      kid,
-      currentWeek,
-      cycles,
-      instances,
-      includePastWeeks
-    )) {
+    for (const weekStart of outstandingWeeksFor(kid, currentWeek, cycles, includePastWeeks)) {
       const wkEnd = weekEnding(weekStart);
       // Value a past week as of the week it covers, not as of today.
       const asOf = wkEnd < today ? wkEnd : today;
@@ -323,17 +309,13 @@ export async function getCurrentWeekReview(familyId: string): Promise<WeeklyRevi
 export async function countMissedWeeks(familyId: string): Promise<number> {
   const today = todayIso();
   const currentWeek = weekStarting(today);
-  const currentWeekEnd = weekEnding(today);
   const kids = await loadKids(familyId);
 
   const weeks = new Set<string>();
   for (const kid of kids) {
     const from = earliestWeekFor(kid, currentWeek, true);
-    const [instances, cycles] = await Promise.all([
-      instancesByWeek(kid.id, from, currentWeekEnd),
-      cyclesByWeek(kid.id, from),
-    ]);
-    for (const wk of outstandingWeeksFor(kid, currentWeek, cycles, instances, true)) {
+    const cycles = await cyclesByWeek(kid.id, from);
+    for (const wk of outstandingWeeksFor(kid, currentWeek, cycles, true)) {
       if (wk !== currentWeek) weeks.add(wk);
     }
   }
