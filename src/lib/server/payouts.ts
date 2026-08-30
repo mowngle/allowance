@@ -27,25 +27,8 @@ import {
   ageOn,
 } from './dates';
 import { resolvePayoutConfig, computeSuggestedCents } from './payout-config';
-
-export type WeeklyReviewItem = {
-  cycleId: string;
-  kidId: string;
-  kidName: string;
-  age: number;
-  weekStarting: string;
-  weekEnding: string;
-  /** 0 = the week in progress, 1 = last week, ... */
-  weeksAgo: number;
-  suggestedAmountCents: number;
-  status: 'open' | 'reviewed' | 'paid' | 'skipped';
-  actualAmountCents: number | null;
-  confirmedCount: number;
-  pendingCount: number;
-  disputedCount: number;
-  totalCount: number;
-  missedChoreNames: string[];
-};
+import type { WeeklyReviewItem, ReviewQueue } from '$lib/review-types';
+export type { WeeklyReviewItem, ReviewQueue };
 
 type FamilyPayoutRow = {
   payoutMode: 'age' | 'fixed';
@@ -299,6 +282,35 @@ export async function getWeeklyReview(
   // Oldest week first so the forgotten weeks are dealt with before this one;
   // kids stay grouped in roster order within a week.
   return items.sort((a, b) => b.weeksAgo - a.weeksAgo);
+}
+
+/** Past weeks shown as full cards before the rest collapse into one row. */
+export const DETAIL_WEEKS = 2;
+
+/**
+ * The review screen's data, bucketed by week (not by kid) so siblings stay side
+ * by side and "5 earlier weeks" counts weeks rather than cards.
+ *
+ * getWeeklyReview returns oldest-first; the screen reads newest-first, so the
+ * buckets are reversed here rather than in the template.
+ */
+export async function getReviewQueue(familyId: string): Promise<ReviewQueue> {
+  const items = await getWeeklyReview(familyId);
+  const currentWeek = weekStarting(todayIso());
+
+  const current = items.filter((i) => i.weekStarting === currentWeek);
+  const past = items
+    .filter((i) => i.weekStarting !== currentWeek)
+    .sort((a, b) => a.weeksAgo - b.weeksAgo);
+
+  const pastWeeks = [...new Set(past.map((i) => i.weekStarting))].sort().reverse();
+  const detail = new Set(pastWeeks.slice(0, DETAIL_WEEKS));
+
+  return {
+    current,
+    recent: past.filter((i) => detail.has(i.weekStarting)),
+    older: past.filter((i) => !detail.has(i.weekStarting)),
+  };
 }
 
 /**
