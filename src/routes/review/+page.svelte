@@ -98,7 +98,11 @@
         </div>
         <button
           type="button"
-          on:click={() => (expandedOlder = !expandedOlder)}
+          on:click={() => {
+            expandedOlder = !expandedOlder;
+            // Toggling unmounts the confirm; don't let it come back still armed.
+            confirmingSkip = false;
+          }}
           class="text-sm text-slate-500 hover:text-slate-800 underline"
         >
           {expandedOlder ? 'Collapse' : 'Expand'}
