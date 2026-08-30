@@ -1,10 +1,32 @@
 import { describe, it, expect } from 'vitest';
+import { db, schema } from '$lib/server/db';
+import { eq } from 'drizzle-orm';
 import { seedFamily, seedKid, seedCycle } from '$lib/server/test/seed';
 import { missedWeeksPayload, remindMissedReviews } from '$lib/server/review-reminder';
-import { todayIso, weekStarting, addWeeks } from '$lib/server/dates';
+import { todayIso, weekStarting, addWeeks, parseIsoDate, toIsoDate } from '$lib/server/dates';
 
 const thisWeek = weekStarting(todayIso());
 const lastWeek = addWeeks(thisWeek, -1);
+
+function seedKidJoined(familyId: string, name: string, weeksAgo: number): string {
+  const joined = addWeeks(thisWeek, -weeksAgo);
+  return seedKid(familyId, name, '2016-01-01', new Date(`${joined}T12:00:00`).getTime());
+}
+
+/** An ISO date in the current week whose weekday is `dow` (0=Sun). */
+function isoForWeekday(dow: number): string {
+  const d = parseIsoDate(todayIso());
+  d.setDate(d.getDate() - ((d.getDay() - dow + 7) % 7));
+  return toIsoDate(d);
+}
+
+/** seedFamily defaults payoutDay to 0 (Sunday); this sets it explicitly. */
+function setPayoutDay(familyId: string, day: number): void {
+  db.update(schema.families)
+    .set({ payoutDay: day })
+    .where(eq(schema.families.id, familyId))
+    .run();
+}
 
 describe('missedWeeksPayload', () => {
   it('reads as a single week', () => {
@@ -21,21 +43,53 @@ describe('missedWeeksPayload', () => {
 });
 
 describe('remindMissedReviews', () => {
-  it('nudges only families with an unreviewed earlier week', async () => {
-    const behind = seedFamily('Behind');
-    const joined = new Date(`${lastWeek}T12:00:00`).getTime();
-    const kid = seedKid(behind, 'Ana', '2016-01-01', joined);
-    seedCycle(kid, lastWeek, 'open');
-
-    const uptodate = seedFamily('Up to date');
-    seedKid(uptodate, 'Bo', '2016-01-01', Date.now());
-
-    expect(await remindMissedReviews()).toBe(1);
+  it('nudges on the payout day when a week is outstanding', async () => {
+    const fam = seedFamily();
+    seedKidJoined(fam, 'Ana', 0); // only the week in progress
+    expect(await remindMissedReviews(isoForWeekday(0))).toBe(1);
   });
 
-  it('stays quiet when nothing is overdue', async () => {
+  it('stays silent on days that are not the payout day', async () => {
     const fam = seedFamily();
-    seedKid(fam, 'Cy', '2016-01-01', Date.now());
-    expect(await remindMissedReviews()).toBe(0);
+    seedKidJoined(fam, 'Bo', 1);
+    setPayoutDay(fam, 0);
+    // Wednesday.
+    expect(await remindMissedReviews(isoForWeekday(3))).toBe(0);
+  });
+
+  it('honors a non-default payout day', async () => {
+    const fam = seedFamily();
+    seedKidJoined(fam, 'Cy', 1);
+    setPayoutDay(fam, 5); // Friday
+    expect(await remindMissedReviews(isoForWeekday(5))).toBe(1);
+    expect(await remindMissedReviews(isoForWeekday(0))).toBe(0);
+  });
+
+  it('stays quiet when every week is finalized', async () => {
+    const fam = seedFamily();
+    const kid = seedKidJoined(fam, 'Dee', 1);
+    seedCycle(kid, lastWeek, 'paid');
+    seedCycle(kid, thisWeek, 'paid');
+    expect(await remindMissedReviews(isoForWeekday(0))).toBe(0);
+  });
+
+  it('stays quiet for a family with no kids', async () => {
+    seedFamily();
+    expect(await remindMissedReviews(isoForWeekday(0))).toBe(0);
+  });
+
+  it('creates no cycles as a side effect', async () => {
+    const fam = seedFamily();
+    seedKidJoined(fam, 'Eli', 3);
+    await remindMissedReviews(isoForWeekday(0));
+    expect(await db.select().from(schema.payoutCycles)).toHaveLength(0);
+  });
+
+  it('nudges every family that is due, not just the first', async () => {
+    const famA = seedFamily('One');
+    seedKidJoined(famA, 'Fay', 1);
+    const famB = seedFamily('Two');
+    seedKidJoined(famB, 'Gus', 1);
+    expect(await remindMissedReviews(isoForWeekday(0))).toBe(2);
   });
 });

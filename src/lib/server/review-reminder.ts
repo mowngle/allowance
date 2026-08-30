@@ -1,17 +1,20 @@
-// Daily nudge for weeks a parent never reviewed.
+// Payout-day reminder for weeks awaiting a decision.
 //
-// The review queue itself already recovers a forgotten week (payouts.ts), but a
-// week only gets forgotten because nobody opened the app — so recovery alone
-// isn't enough. Once a day we check for earlier weeks still awaiting a decision
-// and push the parent phones. It repeats daily while the week stays unreviewed:
-// money owed to a kid is worth nagging about, and approving or skipping the week
-// stops it.
+// The queue itself already recovers a forgotten week (payouts.ts) — this just
+// keeps a backlog from forming. It fires once a week, on the family's chosen
+// payoutDay, and then stays silent: missing it is now merely annoying rather
+// than costly, and a nagging channel is a muted channel. Muting would take the
+// chore-done alerts with it.
+//
+// Server off at 18:00 on payout day means no nudge that week. Acceptable — the
+// queue is the safety net, not this.
 //
 // Mirrors backup.ts's globalThis-guarded scheduler so SvelteKit hot-reload
 // doesn't create duplicate timers.
 
 import { db, schema } from './db';
-import { countMissedWeeks } from './payouts';
+import { countOutstandingWeeks } from './payouts';
+import { todayIso, dayOfWeek } from './dates';
 import { sendToFamilyParents } from './push';
 
 export function missedWeeksPayload(count: number): {
@@ -30,15 +33,29 @@ export function missedWeeksPayload(count: number): {
   };
 }
 
-/** Push every family that has an unreviewed earlier week. Returns families notified. */
-export async function remindMissedReviews(): Promise<number> {
-  const families = await db.select({ id: schema.families.id }).from(schema.families);
+/**
+ * Push every family whose payoutDay is `nowIso`'s weekday and which has a week
+ * awaiting a decision. Returns families notified. `nowIso` is injectable so
+ * tests don't have to freeze the clock.
+ */
+export async function remindMissedReviews(nowIso: string = todayIso()): Promise<number> {
+  const dow = dayOfWeek(nowIso);
+  const families = await db
+    .select({ id: schema.families.id, payoutDay: schema.families.payoutDay })
+    .from(schema.families);
+
   let notified = 0;
   for (const fam of families) {
-    const count = await countMissedWeeks(fam.id);
+    if (fam.payoutDay !== dow) continue;
+    const count = await countOutstandingWeeks(fam.id);
     if (count === 0) continue;
-    await sendToFamilyParents(fam.id, missedWeeksPayload(count));
-    notified++;
+    try {
+      await sendToFamilyParents(fam.id, missedWeeksPayload(count));
+      notified++;
+    } catch (e) {
+      // One family's dead endpoint must not stop the others.
+      console.error('[review-reminder] push failed:', e);
+    }
   }
   return notified;
 }

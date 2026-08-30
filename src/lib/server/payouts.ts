@@ -343,6 +343,31 @@ export async function countMissedWeeks(familyId: string): Promise<number> {
   return weeks.size;
 }
 
+/**
+ * Distinct weeks still awaiting a decision, including the week in progress —
+ * what the payout-day reminder counts. Read-only: like countMissedWeeks it
+ * creates nothing, so a scheduled job never materializes cycles as a side effect.
+ *
+ * outstandingWeeksFor always includes the current week unconditionally (so the
+ * review screen keeps showing it even once paid), but a *finalized* current
+ * week is not something a reminder should nag about, so it's excluded here the
+ * same way countMissedWeeks excludes it entirely.
+ */
+export async function countOutstandingWeeks(familyId: string): Promise<number> {
+  const currentWeek = weekStarting(todayIso());
+  const kids = await loadKids(familyId);
+
+  const weeks = new Set<string>();
+  for (const kid of kids) {
+    const cycles = await cyclesByWeek(kid.id, earliestWeekFor(kid, currentWeek, true));
+    for (const wk of outstandingWeeksFor(kid, currentWeek, cycles, true)) {
+      if (wk === currentWeek && isFinalized(cycles.get(wk)?.status)) continue;
+      weeks.add(wk);
+    }
+  }
+  return weeks.size;
+}
+
 /** Approve a payout: marks cycle as paid + creates a ledger credit. */
 export async function approvePayout(
   parentPersonId: string,
