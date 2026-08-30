@@ -15,7 +15,7 @@
 // cover (the kid's age then, not today's), so a birthday in between doesn't
 // inflate an old week.
 
-import { and, eq, gte, lte } from 'drizzle-orm';
+import { and, eq, gte, lte, inArray } from 'drizzle-orm';
 import { db, schema } from './db';
 import type { PayoutCycle } from './schema';
 import {
@@ -422,4 +422,134 @@ export async function skipPayout(
     })
     .where(eq(schema.payoutCycles.id, cycleId))
     .run();
+}
+
+/**
+ * Throws if any id belongs to a kid outside `familyId`. The batch actions take
+ * ids straight from form data, so ownership can't be assumed the way it can for
+ * the single-cycle actions, whose ids come from a trusted page load.
+ *
+ * Ids that don't exist at all are not an error — the caller's loop skips them.
+ * A stale page is a re-render, not an attack.
+ */
+async function assertCyclesInFamily(familyId: string, cycleIds: string[]): Promise<void> {
+  if (cycleIds.length === 0) return;
+  const rows = await db
+    .select({ id: schema.payoutCycles.id, familyId: schema.persons.familyId })
+    .from(schema.payoutCycles)
+    .innerJoin(schema.persons, eq(schema.persons.id, schema.payoutCycles.kidId))
+    .where(inArray(schema.payoutCycles.id, cycleIds));
+  if (rows.some((r) => r.familyId !== familyId)) {
+    throw new Error('Cycle not in this family');
+  }
+}
+
+/**
+ * Approve several weeks at once, each at its own frozen suggested amount — so a
+ * birthday inside the backlog still pays $8 for May weeks and $9 for June weeks.
+ *
+ * Runs in a transaction and re-reads each cycle's status inside it: both parents'
+ * phones can hit "Approve all" at the same time, and a double-tap on a slow LAN
+ * is ordinary. Returns how many cycles were actually paid.
+ */
+export async function approvePayoutBatch(
+  familyId: string,
+  parentPersonId: string,
+  cycleIds: string[],
+  note?: string
+): Promise<number> {
+  if (cycleIds.length === 0) return 0;
+  await assertCyclesInFamily(familyId, cycleIds);
+
+  const now = Date.now();
+  let count = 0;
+
+  // better-sqlite3 transactions are synchronous — no await inside this callback.
+  db.transaction((tx) => {
+    for (const id of cycleIds) {
+      const cycle = tx
+        .select()
+        .from(schema.payoutCycles)
+        .where(eq(schema.payoutCycles.id, id))
+        .limit(1)
+        .all()[0];
+      if (!cycle) continue;
+      if (cycle.status === 'paid' || cycle.status === 'skipped') continue;
+
+      const amount = cycle.suggestedAmountCents;
+
+      tx.update(schema.payoutCycles)
+        .set({
+          status: 'paid',
+          actualAmountCents: amount,
+          reviewedAt: now,
+          reviewedBy: parentPersonId,
+          note: note ?? null,
+        })
+        .where(eq(schema.payoutCycles.id, id))
+        .run();
+
+      if (amount > 0) {
+        tx.insert(schema.ledgerEntries)
+          .values({
+            id: crypto.randomUUID(),
+            kidId: cycle.kidId,
+            kind: 'payout',
+            amountCents: amount,
+            description: note?.trim() || `Weekly allowance (week of ${cycle.weekStarting})`,
+            visibleToKid: true,
+            createdAt: now,
+            createdBy: parentPersonId,
+            relatedPayoutCycleId: id,
+          })
+          .run();
+      }
+
+      count++;
+    }
+  });
+
+  return count;
+}
+
+/** Skip several weeks at once. No ledger entries. Returns how many were skipped. */
+export async function skipPayoutBatch(
+  familyId: string,
+  parentPersonId: string,
+  cycleIds: string[],
+  note?: string
+): Promise<number> {
+  if (cycleIds.length === 0) return 0;
+  await assertCyclesInFamily(familyId, cycleIds);
+
+  const now = Date.now();
+  let count = 0;
+
+  db.transaction((tx) => {
+    for (const id of cycleIds) {
+      const cycle = tx
+        .select()
+        .from(schema.payoutCycles)
+        .where(eq(schema.payoutCycles.id, id))
+        .limit(1)
+        .all()[0];
+      if (!cycle) continue;
+      if (cycle.status === 'paid' || cycle.status === 'skipped') continue;
+
+      tx.update(schema.payoutCycles)
+        .set({
+          status: 'skipped',
+          actualAmountCents: 0,
+          reviewedAt: now,
+          reviewedBy: parentPersonId,
+          note: note ?? null,
+        })
+        .where(eq(schema.payoutCycles.id, id))
+        .run();
+
+      count++;
+    }
+  });
+
+  return count;
 }
