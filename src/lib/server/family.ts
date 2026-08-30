@@ -154,6 +154,43 @@ export async function disputeApproval(
     .run();
 }
 
+/**
+ * Waive a chore the kid never did: sick day, away for the weekend, the chore
+ * didn't apply that day. It stops counting against them and drops out of the
+ * weekly review entirely — neither done nor missed.
+ *
+ * A parent confirming a past-due chore the kid never marked (they did do it,
+ * they just never tapped it) is confirmApproval — same end state as approving
+ * from the queue, so it credits the week normally.
+ */
+export async function excuseChore(
+  parentPersonId: string,
+  instanceId: string
+): Promise<void> {
+  const guard = await guardApproval(parentPersonId, instanceId);
+  if (!guard.ok) throw new Error(guard.reason);
+
+  const rows = await db
+    .select({ status: schema.choreInstances.status })
+    .from(schema.choreInstances)
+    .where(eq(schema.choreInstances.id, instanceId))
+    .limit(1);
+  // Excusing a confirmed chore would quietly strip credit the kid already earned.
+  if (rows[0]?.status === 'confirmed') {
+    throw new Error('Already confirmed — dispute it first if that was wrong');
+  }
+
+  db.update(schema.choreInstances)
+    .set({
+      status: 'excused',
+      confirmedAt: Date.now(),
+      confirmedBy: parentPersonId,
+      markedDoneAt: null,
+    })
+    .where(eq(schema.choreInstances.id, instanceId))
+    .run();
+}
+
 async function guardApproval(
   parentPersonId: string,
   instanceId: string

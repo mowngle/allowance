@@ -84,6 +84,12 @@ export function weekEnding(isoDate: string): string {
   return toIsoDate(d);
 }
 
+/** Whole days from `fromIso` to `toIso`. Negative if toIso is earlier. */
+export function daysBetween(fromIso: string, toIso: string): number {
+  const ms = parseIsoDate(toIso).getTime() - parseIsoDate(fromIso).getTime();
+  return Math.round(ms / 86400000);
+}
+
 /** Compute age in whole years given a birthdate (ISO date) and an "as of" date. */
 export function ageOn(birthdateIso: string, asOfIso: string): number {
   const birth = parseIsoDate(birthdateIso);

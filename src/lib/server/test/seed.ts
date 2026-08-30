@@ -39,7 +39,7 @@ export function seedChore(familyId: string, assigneeId: string, name = 'Chore'):
 export function seedInstance(
   choreId: string,
   dueDate: string,
-  status: 'pending' | 'done' | 'confirmed' | 'disputed',
+  status: 'pending' | 'done' | 'confirmed' | 'disputed' | 'excused',
   markedDoneAt: number | null = null
 ): string {
   const id = crypto.randomUUID();

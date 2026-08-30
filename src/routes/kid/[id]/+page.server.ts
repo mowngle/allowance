@@ -1,11 +1,14 @@
 // /kid/[id] — parent-only detail page for a single kid.
-// Shows balance, full ledger, debit + adjustment forms.
+// Shows balance, full ledger, debit + adjustment forms, and the chores behind
+// the kid's "N behind" badge on the dashboard — with the two verbs that clear
+// one: credit it (they did do it) or excuse it (it doesn't count).
 
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect, error } from '@sveltejs/kit';
 import { eq, and } from 'drizzle-orm';
 import { db, schema } from '$lib/server/db';
-import { getBalanceCents } from '$lib/server/family';
+import { confirmApproval, excuseChore, getBalanceCents } from '$lib/server/family';
+import { getCatchUpChores } from '$lib/server/chores';
 import { getKidLedger, recordDebit, recordAdjustment } from '$lib/server/ledger';
 import { ageOn } from '$lib/server/dates';
 import { requireFreshPin } from '$lib/server/pinGuard';
@@ -35,19 +38,51 @@ export const load: PageServerLoad = async ({ locals, params }) => {
   const today = new Date().toISOString().slice(0, 10);
   const age = kid.birthdate ? ageOn(kid.birthdate, today) : 0;
 
-  const [balanceCents, ledger] = await Promise.all([
+  const [balanceCents, ledger, catchUp] = await Promise.all([
     getBalanceCents(kid.id),
     getKidLedger(kid.id, { limit: 50 }),
+    getCatchUpChores(kid.id),
   ]);
 
   return {
     kid: { id: kid.id, name: kid.name, age },
     balanceCents,
     ledger,
+    catchUp,
   };
 };
 
 export const actions: Actions = {
+  /** "They did do it" — credits the chore exactly as approving from the queue does. */
+  creditChore: async ({ locals, request }) => {
+    if (!locals.session || locals.session.role !== 'parent') {
+      return fail(403, { error: 'Parents only' });
+    }
+    const instanceId = (await request.formData()).get('instanceId')?.toString();
+    if (!instanceId) return fail(400, { error: 'Missing instance.' });
+    try {
+      await confirmApproval(locals.session.personId, instanceId);
+    } catch (e) {
+      return fail(400, { error: (e as Error).message });
+    }
+    return { ok: true };
+  },
+
+  /** "It doesn't count" — waives the chore; neither done nor missed. */
+  excuseChore: async ({ locals, request }) => {
+    if (!locals.session || locals.session.role !== 'parent') {
+      return fail(403, { error: 'Parents only' });
+    }
+    const instanceId = (await request.formData()).get('instanceId')?.toString();
+    if (!instanceId) return fail(400, { error: 'Missing instance.' });
+    try {
+      await excuseChore(locals.session.personId, instanceId);
+    } catch (e) {
+      return fail(400, { error: (e as Error).message });
+    }
+    return { ok: true };
+  },
+
   debit: async ({ locals, request, params }) => {
     if (!locals.session || locals.session.role !== 'parent') {
       return fail(403, { error: 'Parents only' });

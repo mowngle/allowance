@@ -41,6 +41,54 @@
   <p class="mt-3 rounded bg-red-100 p-3 text-red-800 text-sm">{form.error}</p>
 {/if}
 
+<!-- Behind: chores that came due and were never done -->
+{#if data.catchUp.length > 0}
+  <section class="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4">
+    <h2 class="font-medium text-amber-900">
+      {data.catchUp.length} behind
+    </h2>
+    <p class="mt-1 text-xs text-amber-800">
+      These are the chores counting against {data.kid.name}. {data.kid.name} can still do
+      and tap them — or settle one here: <strong>Did it</strong> credits the chore toward
+      the week, <strong>Excuse</strong> waives it so it counts neither way.
+    </p>
+
+    <ul class="mt-3 space-y-2">
+      {#each data.catchUp as chore (chore.instanceId)}
+        <li class="rounded-lg border border-amber-200 bg-white p-3">
+          <div class="flex items-center gap-3">
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium truncate">{chore.name}</div>
+              <div class="text-xs text-slate-500">
+                Due {chore.dueDate} · {chore.daysLate === 1
+                  ? '1 day late'
+                  : `${chore.daysLate} days late`}{#if chore.status === 'disputed'} · you marked
+                  it not done{/if}
+              </div>
+            </div>
+            <form method="POST" action="?/creditChore" use:enhance>
+              <input type="hidden" name="instanceId" value={chore.instanceId} />
+              <button
+                class="rounded-lg bg-brand-700 hover:bg-brand-800 text-white text-sm px-3 py-2 font-medium"
+              >
+                Did it
+              </button>
+            </form>
+            <form method="POST" action="?/excuseChore" use:enhance>
+              <input type="hidden" name="instanceId" value={chore.instanceId} />
+              <button
+                class="rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm px-3 py-2 font-medium"
+              >
+                Excuse
+              </button>
+            </form>
+          </div>
+        </li>
+      {/each}
+    </ul>
+  </section>
+{/if}
+
 <!-- Record cash withdrawal -->
 <section class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
   <h2 class="font-medium">Record cash withdrawal</h2>

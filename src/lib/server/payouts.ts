@@ -136,6 +136,9 @@ async function instancesByWeek(
 
   const byWeek = new Map<string, InstanceRow[]>();
   for (const row of rows) {
+    // An excused chore is out of the week entirely — not done, not missed, and
+    // not in the denominator, so waiving one never dents the kid's ratio.
+    if (row.status === 'excused') continue;
     const wk = weekStarting(row.dueDate);
     const bucket = byWeek.get(wk);
     if (bucket) bucket.push(row);

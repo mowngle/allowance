@@ -5,9 +5,9 @@
 // person's active chores. Idempotent — relies on a unique index on
 // (chore_id, due_date) to avoid duplicates if called multiple times.
 
-import { and, eq, inArray, lt } from 'drizzle-orm';
+import { and, eq, gte, inArray, lte } from 'drizzle-orm';
 import { db, schema } from './db';
-import { todayIso, dayOfWeek, parseIsoDate, toIsoDate, isoDaysAgo } from './dates';
+import { todayIso, dayOfWeek, isoDaysAgo, daysBetween } from './dates';
 
 type Recurrence =
   | { kind: 'daily' }
@@ -105,7 +105,7 @@ export type TodayChoreView = {
   choreId: string;
   name: string;
   photoUrl: string | null;
-  status: 'pending' | 'done' | 'confirmed' | 'disputed';
+  status: 'pending' | 'done' | 'confirmed' | 'disputed' | 'excused';
   rolledFromYesterday: boolean;
 };
 
@@ -135,43 +135,87 @@ export async function getTodayChores(personId: string): Promise<TodayChoreView[]
   }));
 }
 
-export type WeekProgress = {
-  status: 'on_track' | 'behind';
-  behindCount: number;
+/** How far back a missed chore stays actionable. Older ones are let go. */
+export const CATCH_UP_WINDOW_DAYS = 7;
+
+export type CatchUpChore = {
+  instanceId: string;
+  choreId: string;
+  name: string;
+  photoUrl: string | null;
+  dueDate: string;
+  status: 'pending' | 'disputed';
+  daysLate: number;
 };
 
 /**
- * "On track" if no past-due instances are pending or disputed.
- * "Behind N" otherwise.
+ * The chores behind a kid's "N behind" badge: instances that came due in the
+ * last CATCH_UP_WINDOW_DAYS days and were never done, newest first.
  *
- * Only counts instances from the past 7 days to avoid old data dragging on
- * forever. The Friday review reset can clean this up properly later.
+ * Superseded instances are left out. A roll-forward chore materializes a fresh
+ * instance each day pointing back at the undone one (rolledFromId), so counting
+ * both would report one missed chore as two, three, four... on consecutive days.
+ * The newest link in that chain is the live obligation; the earlier links are
+ * history. Excused instances are out too — a parent has already ruled on them.
  */
-export async function getWeekProgress(personId: string): Promise<WeekProgress> {
+export async function getCatchUpChores(personId: string): Promise<CatchUpChore[]> {
   const today = todayIso();
-  const weekAgo = isoDaysAgo(7);
+  const windowStart = isoDaysAgo(CATCH_UP_WINDOW_DAYS);
 
+  // Include today so a successor created today marks yesterday's link superseded.
   const rows = await db
     .select({
-      id: schema.choreInstances.id,
+      instanceId: schema.choreInstances.id,
+      choreId: schema.chores.id,
+      name: schema.chores.name,
+      photoUrl: schema.chores.photoUrl,
       status: schema.choreInstances.status,
       dueDate: schema.choreInstances.dueDate,
+      rolledFromId: schema.choreInstances.rolledFromId,
     })
     .from(schema.choreInstances)
     .innerJoin(schema.chores, eq(schema.chores.id, schema.choreInstances.choreId))
     .where(
       and(
         eq(schema.chores.assigneeId, personId),
-        lt(schema.choreInstances.dueDate, today)
+        gte(schema.choreInstances.dueDate, windowStart),
+        lte(schema.choreInstances.dueDate, today)
       )
     );
 
-  const behind = rows.filter(
-    (r) =>
-      r.dueDate >= weekAgo &&
-      (r.status === 'pending' || r.status === 'disputed')
-  ).length;
+  const superseded = new Set(rows.map((r) => r.rolledFromId).filter(Boolean) as string[]);
 
+  return rows
+    .filter(
+      (r) =>
+        r.dueDate < today &&
+        (r.status === 'pending' || r.status === 'disputed') &&
+        !superseded.has(r.instanceId)
+    )
+    .map((r) => ({
+      instanceId: r.instanceId,
+      choreId: r.choreId,
+      name: r.name,
+      photoUrl: r.photoUrl,
+      dueDate: r.dueDate,
+      status: r.status as 'pending' | 'disputed',
+      daysLate: daysBetween(r.dueDate, today),
+    }))
+    .sort((a, b) => (a.dueDate < b.dueDate ? 1 : a.dueDate > b.dueDate ? -1 : 0));
+}
+
+export type WeekProgress = {
+  status: 'on_track' | 'behind';
+  behindCount: number;
+};
+
+/**
+ * "On track" if nothing is waiting in the catch-up list, "Behind N" otherwise.
+ * Deliberately the same query the catch-up list uses, so the badge can never
+ * name a number the list can't show you.
+ */
+export async function getWeekProgress(personId: string): Promise<WeekProgress> {
+  const behind = (await getCatchUpChores(personId)).length;
   return {
     status: behind === 0 ? 'on_track' : 'behind',
     behindCount: behind,

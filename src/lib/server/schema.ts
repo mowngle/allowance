@@ -104,6 +104,9 @@ export const chores = sqliteTable(
 //   done      → kid marked it; awaiting parent confirmation
 //   confirmed → parent confirmed (counts toward weekly responsibility)
 //   disputed  → parent rejected the kid's mark
+//   excused   → parent waived it (sick, away, chore didn't apply). Held against
+//               nobody: it drops out of the behind count and out of the weekly
+//               review's numerator AND denominator, unlike a missed chore.
 //
 // rolledFromId points to the prior day's instance if this one is a roll-forward
 // of an undone chore. We never "edit" instances backward; we materialize new ones.
@@ -116,7 +119,9 @@ export const choreInstances = sqliteTable(
       .notNull()
       .references(() => chores.id, { onDelete: 'cascade' }),
     dueDate: text('due_date').notNull(), // 'YYYY-MM-DD'
-    status: text('status', { enum: ['pending', 'done', 'confirmed', 'disputed'] })
+    status: text('status', {
+      enum: ['pending', 'done', 'confirmed', 'disputed', 'excused'],
+    })
       .notNull()
       .default('pending'),
     markedDoneAt: integer('marked_done_at'),

@@ -6,6 +6,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
 import {
   ensureTodaysInstances,
+  getCatchUpChores,
   getTodayChores,
   getWeekProgress,
   markChoreDone,
@@ -29,12 +30,23 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   if (session.role === 'kid') {
     await ensureTodaysInstances(session.personId);
-    const [chores, progress, balanceCents] = await Promise.all([
+    const [chores, catchUp, progress, balanceCents] = await Promise.all([
       getTodayChores(session.personId),
+      // Yesterday's misses aren't on today's list, so without this the kid can
+      // see "3 behind" and have no way to do anything about it.
+      getCatchUpChores(session.personId),
       getWeekProgress(session.personId),
       getBalanceCents(session.personId),
     ]);
-    return { chores, progress, balanceCents, kids: null, pending: null, missedWeeks: 0 };
+    return {
+      chores,
+      catchUp,
+      progress,
+      balanceCents,
+      kids: null,
+      pending: null,
+      missedWeeks: 0,
+    };
   }
 
   // Parent dashboard
@@ -46,7 +58,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     // forgotten review isn't only discoverable by opening /review.
     countMissedWeeks(session.familyId),
   ]);
-  return { chores: null, progress: null, kids, pending, missedWeeks };
+  return { chores: null, catchUp: null, progress: null, kids, pending, missedWeeks };
 };
 
 async function notifyChoreDone(familyId: string, kidName: string): Promise<void> {

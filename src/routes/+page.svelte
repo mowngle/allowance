@@ -54,9 +54,39 @@
       <div class="text-2xl font-semibold">
         {data.progress.behindCount} chore{data.progress.behindCount === 1 ? '' : 's'} behind
       </div>
-      <div class="mt-1 text-sm opacity-80">Catch up to stay on track for this week.</div>
+      <div class="mt-1 text-sm opacity-80">See "Catch up" below — they still count.</div>
     {/if}
   </div>
+
+  <!-- Catch up: chores that came due earlier and were never done -->
+  {#if data.catchUp && data.catchUp.length > 0}
+    <section class="mt-6">
+      <h2 class="text-xs uppercase tracking-wide text-slate-500 font-medium">Catch up</h2>
+      <p class="mt-1 text-xs text-slate-500">
+        These are what "behind" means. Do one and tap it — it still counts for the week.
+      </p>
+      <div class="mt-2 space-y-2">
+        {#each data.catchUp as chore (chore.instanceId)}
+          <form method="POST" action="?/markDone" use:enhance>
+            <input type="hidden" name="instanceId" value={chore.instanceId} />
+            <button
+              type="submit"
+              class="flex w-full items-center gap-3 rounded-xl border-2 border-amber-400 bg-amber-50 p-3 text-left hover:border-amber-500"
+            >
+              <span class="text-2xl" aria-hidden="true">○</span>
+              <span class="flex-1 min-w-0">
+                <span class="block font-medium">{chore.name}</span>
+                <span class="block text-xs text-amber-700">
+                  {chore.daysLate === 1 ? 'Due yesterday' : `${chore.daysLate} days late`}{#if chore.status === 'disputed'} · marked not done{/if}
+                </span>
+              </span>
+              <span class="text-sm font-medium text-amber-800">Do it →</span>
+            </button>
+          </form>
+        {/each}
+      </div>
+    </section>
+  {/if}
 
   <!-- Today's chores -->
   <section class="mt-6">
@@ -73,17 +103,27 @@
             <input type="hidden" name="instanceId" value={chore.instanceId} />
             <button
               type="submit"
-              disabled={chore.status === 'done' || chore.status === 'confirmed'}
+              disabled={chore.status === 'done' ||
+                chore.status === 'confirmed' ||
+                chore.status === 'excused'}
               class="rounded-xl border-2 p-4 text-left transition-colors {chore.status === 'confirmed'
                 ? 'border-green-300 bg-green-50 text-green-900'
                 : chore.status === 'done'
                 ? 'border-blue-300 bg-blue-50 text-blue-900'
+                : chore.status === 'excused'
+                ? 'border-slate-200 bg-slate-50 text-slate-500'
                 : chore.rolledFromYesterday
                 ? 'border-amber-400 bg-amber-50 hover:border-amber-500'
                 : 'border-slate-200 bg-white hover:border-slate-400'}"
             >
               <div class="text-3xl mb-2" aria-hidden="true">
-                {chore.status === 'confirmed' ? '✓' : chore.status === 'done' ? '⏳' : '○'}
+                {chore.status === 'confirmed'
+                  ? '✓'
+                  : chore.status === 'done'
+                  ? '⏳'
+                  : chore.status === 'excused'
+                  ? '—'
+                  : '○'}
               </div>
               <div class="font-medium">{chore.name}</div>
               {#if chore.rolledFromYesterday && chore.status === 'pending'}
@@ -94,6 +134,9 @@
               {/if}
               {#if chore.status === 'confirmed'}
                 <div class="mt-1 text-xs">Done</div>
+              {/if}
+              {#if chore.status === 'excused'}
+                <div class="mt-1 text-xs">Skipped for you</div>
               {/if}
             </button>
           </form>
@@ -203,7 +246,7 @@
               </span>
             {:else}
               <span class="rounded-full bg-amber-100 text-amber-900 text-xs font-medium px-2 py-1">
-                {kid.behindCount} behind
+                {kid.behindCount} behind — tap to settle
               </span>
             {/if}
             {#if kid.pendingApprovalsCount > 0}
