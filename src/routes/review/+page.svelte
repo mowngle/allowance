@@ -6,6 +6,9 @@
   export let data: PageData;
 
   let expandedOlder = false;
+  // Skipping the whole backlog has no un-skip anywhere in the app, so it gets
+  // an explicit second tap. Approving stays single-tap — it's recoverable.
+  let confirmingSkip = false;
 
   function dollars(cents: number): string {
     return `$${(cents / 100).toFixed(2)}`;
@@ -114,17 +117,37 @@
               Approve all {dollars(olderTotalCents)}
             </button>
           </form>
-          <form method="POST" action="?/skipAll" use:enhance>
-            {#each data.queue.older as item (item.cycleId)}
-              <input type="hidden" name="cycleId" value={item.cycleId} />
-            {/each}
+          {#if confirmingSkip}
             <button
+              type="button"
+              on:click={() => (confirmingSkip = false)}
+              class="w-full rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 py-3 text-sm font-medium"
+            >
+              Cancel
+            </button>
+          {:else}
+            <button
+              type="button"
+              on:click={() => (confirmingSkip = true)}
               class="w-full rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 py-3 text-sm font-medium"
             >
               Skip all
             </button>
-          </form>
+          {/if}
         </div>
+
+        {#if confirmingSkip}
+          <form method="POST" action="?/skipAll" use:enhance class="mt-2">
+            {#each data.queue.older as item (item.cycleId)}
+              <input type="hidden" name="cycleId" value={item.cycleId} />
+            {/each}
+            <button
+              class="w-full rounded-lg bg-amber-600 hover:bg-amber-700 text-white py-3 text-sm font-medium"
+            >
+              Really skip {olderWeekCount} week{olderWeekCount === 1 ? '' : 's'}?
+            </button>
+          </form>
+        {/if}
       {/if}
     </div>
 
