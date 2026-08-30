@@ -1,18 +1,25 @@
 // /review — parent-only. Weekly review: per-kid weekly summary + approve/skip.
-// Shows any earlier week the parent never finalized, oldest first, before the
-// week in progress — a forgotten week stays payable rather than vanishing.
+// Every week the parent never finalized is still here, newest first, with older
+// weeks collapsed into one bulk-actionable group — a forgotten week stays
+// payable rather than vanishing.
 
 import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect, error } from '@sveltejs/kit';
-import { getWeeklyReview, approvePayout, skipPayout } from '$lib/server/payouts';
+import {
+  getReviewQueue,
+  approvePayout,
+  skipPayout,
+  approvePayoutBatch,
+  skipPayoutBatch,
+} from '$lib/server/payouts';
 import { requireFreshPin } from '$lib/server/pinGuard';
 
 export const load: PageServerLoad = async ({ locals }) => {
   if (!locals.session) throw redirect(303, '/claim');
   if (locals.session.role !== 'parent') throw error(403, 'Parents only');
   await requireFreshPin(locals.session, '/review');
-  const items = await getWeeklyReview(locals.session.familyId);
-  return { items };
+  const queue = await getReviewQueue(locals.session.familyId);
+  return { queue };
 };
 
 export const actions: Actions = {
@@ -51,5 +58,45 @@ export const actions: Actions = {
       return fail(400, { error: (e as Error).message });
     }
     return { ok: true };
+  },
+
+  approveAll: async ({ locals, request }) => {
+    if (!locals.session || locals.session.role !== 'parent') {
+      return fail(403, { error: 'Parents only' });
+    }
+    const data = await request.formData();
+    const cycleIds = data.getAll('cycleId').map((v) => v.toString());
+    if (cycleIds.length === 0) return fail(400, { error: 'Nothing selected' });
+
+    try {
+      const count = await approvePayoutBatch(
+        locals.session.familyId,
+        locals.session.personId,
+        cycleIds
+      );
+      return { ok: true, count };
+    } catch (e) {
+      return fail(400, { error: (e as Error).message });
+    }
+  },
+
+  skipAll: async ({ locals, request }) => {
+    if (!locals.session || locals.session.role !== 'parent') {
+      return fail(403, { error: 'Parents only' });
+    }
+    const data = await request.formData();
+    const cycleIds = data.getAll('cycleId').map((v) => v.toString());
+    if (cycleIds.length === 0) return fail(400, { error: 'Nothing selected' });
+
+    try {
+      const count = await skipPayoutBatch(
+        locals.session.familyId,
+        locals.session.personId,
+        cycleIds
+      );
+      return { ok: true, count };
+    } catch (e) {
+      return fail(400, { error: (e as Error).message });
+    }
   },
 };
