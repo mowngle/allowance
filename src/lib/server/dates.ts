@@ -49,6 +49,33 @@ export function weekStarting(isoDate: string): string {
   return toIsoDate(d);
 }
 
+/** Shift an ISO date by n days (negative shifts backward). */
+export function addDays(isoDate: string, n: number): string {
+  const d = parseIsoDate(isoDate);
+  d.setDate(d.getDate() + n);
+  return toIsoDate(d);
+}
+
+/** Shift a week-starting anchor by n whole weeks (negative shifts backward). */
+export function addWeeks(isoDate: string, n: number): string {
+  return addDays(isoDate, n * 7);
+}
+
+/**
+ * Every week-starting anchor from `fromWeek` through `toWeek`, inclusive and
+ * oldest first. Both arguments must already be Monday anchors (weekStarting).
+ * Returns [] if fromWeek is after toWeek.
+ */
+export function weeksFromThrough(fromWeek: string, toWeek: string): string[] {
+  const out: string[] = [];
+  let w = fromWeek;
+  while (w <= toWeek) {
+    out.push(w);
+    w = addWeeks(w, 1);
+  }
+  return out;
+}
+
 /** End of the current responsibility week (Sunday) for a given date. */
 export function weekEnding(isoDate: string): string {
   const start = weekStarting(isoDate);

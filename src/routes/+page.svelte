@@ -142,13 +142,26 @@
     {/if}
   </section>
 
+  <!-- Missed-week nudge -->
+  {#if data.missedWeeks}
+    <a
+      href="/review"
+      class="mt-6 block rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 hover:bg-amber-100"
+    >
+      <span class="font-medium">
+        {data.missedWeeks} earlier week{data.missedWeeks === 1 ? '' : 's'} never got reviewed.
+      </span>
+      <span class="text-amber-800"> Nobody has been paid for {data.missedWeeks === 1 ? 'it' : 'them'} — review {data.missedWeeks === 1 ? 'it' : 'them'} now →</span>
+    </a>
+  {/if}
+
   <!-- Quick links -->
   <div class="mt-6 grid grid-cols-2 gap-3">
     <a
       href="/review"
       class="rounded-xl bg-brand-700 hover:bg-brand-800 text-white text-center py-3 font-medium"
     >
-      Weekly review →
+      Weekly review{#if data.missedWeeks} ({data.missedWeeks} overdue){/if} →
     </a>
     <a
       href="/chores"
